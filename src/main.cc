@@ -10,9 +10,9 @@
 #include <avr/sleep.h>
 
 enum {
-  ACC_OUT_PIN = 1,
-  ACC_IN_PIN  = 0,
-  PWR_BTN_PIN = 2,
+  ACC_OUT_PIN = 4,
+  ACC_IN_PIN  = 3,
+  PWR_BTN_PIN = 1,
 
   ACC_OUT_MSK = 1 << ACC_OUT_PIN,
   ACC_IN_MSK  = 1 << ACC_IN_PIN,
