@@ -1,1 +1,5 @@
 .pio
+hardware/auto-acc-timer/auto-acc-timer-backups
+hardware/auto-acc-timer/production
+hardware/auto-acc-timer/*-bak
+
