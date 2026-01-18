@@ -283,7 +283,8 @@ ISR(PCINT0_vect)
 static Debounce<PWR_BTN_MSK, 5, true> pwr_btn;
 static Debounce<ACC_IN_MSK, 5> acc_in;
 
-static Timed_pwr_on<Timer, 10 /*1800*/> timed_pwr;
+// 30minutes timeout
+static Timed_pwr_on<Timer, 30 * 60> timed_pwr;
 
 static void do_sleep()
 {
