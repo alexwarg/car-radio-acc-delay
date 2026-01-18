@@ -23,8 +23,8 @@ class Irq_guard
 {
   uint8_t f;
 public:
-  Irq_guard() : f(SREG) { cli(); };
-  ~Irq_guard() { SREG = f; }
+  Irq_guard() : f(SREG) { cli(); asm volatile ("" : : : "memory"); };
+  ~Irq_guard() { asm volatile ("" : : : "memory"); SREG = f; }
 };
 
 struct Timer
@@ -42,7 +42,7 @@ struct Timer
     Max_tick = Freq / Cnt_freq,
   };
 
-  unsigned long volatile _cnt = 0;
+  unsigned long _cnt = 0;
 
   unsigned long ticks() const
   {
@@ -57,6 +57,11 @@ struct Timer
   unsigned long cnt() const
   {
     Irq_guard g;
+    return _cnt;
+  }
+
+  unsigned long cnt_locked() const
+  {
     return _cnt;
   }
 
@@ -101,6 +106,9 @@ struct Debounce
 
 
   bool running() const { return _running; }
+  bool might_sleep() const { return !_running; }
+  // if we might sleep we can power down (PCINT wakes us up)
+  bool might_power_down() const { return true; }
 
   bool update(unsigned long ts, uint8_t pv = PINB)
   {
@@ -150,19 +158,22 @@ struct Timed_pwr_on
     return _pwr != P_off;
   }
 
-  bool timeout(unsigned long now)
+  bool timeout(unsigned long now) const
   {
     if (_pwr != P_timer)
       return false;
 
     unsigned long d = now - _pwr_on_tick;
-    if (d >= ON_TIME_SECS * TIMER::Cnt_freq) {
-      _pwr = P_off;
-      switch_acc_off();
+    if (d >= ON_TIME_SECS * TIMER::Cnt_freq)
       return true;
-    }
 
     return false;
+  }
+
+  void hit()
+  {
+    _pwr = P_off;
+    switch_acc_off();
   }
 
   void start_timer(unsigned long now)
@@ -181,6 +192,10 @@ struct Timed_pwr_on
   }
 
   bool running() const { return _pwr == P_timer; }
+  // timers always can sleep, just might not power down...
+  bool might_sleep() const { return true; }
+  // timers always can sleep, just might not power down...
+  bool might_power_down() const { return !running(); }
 
   void switch_acc_on()
   {
@@ -274,7 +289,7 @@ ISR(TIMER0_COMPA_vect)
   ++timer._cnt;
 }
 
-static volatile uint8_t _pin_changed = false;
+static uint8_t _pin_changed = false;
 ISR(PCINT0_vect)
 {
   _pin_changed = true;
@@ -288,6 +303,7 @@ static Timed_pwr_on<Timer, 30 * 60> timed_pwr;
 
 static void do_sleep()
 {
+  asm volatile ("" : : : "memory");
   sei();
   sleep_cpu();
   cli();
@@ -322,28 +338,32 @@ int main()
         && (pwr_btn.pressed() < 0)) // release
       timed_pwr.power_btn(acc_in, now.cnt);
 
-    timed_pwr.timeout(now.cnt);
+    // if we hit the timeout, handle it
+    if (timed_pwr.timeout(now.cnt))
+      timed_pwr.hit();
 
-    if (pwr_btn.running() || acc_in.running())
+    if (!pwr_btn.might_sleep()
+        || !acc_in.might_sleep()
+        || !timed_pwr.might_sleep())
       continue;
 
     {
       Irq_guard g;
-      if (_pin_changed) {
+      if (timed_pwr.timeout(timer.cnt()) || _pin_changed) {
         _pin_changed = false;
         continue;
       }
 
-      if (timed_pwr.running()) {
-        do_sleep();
-        _pin_changed = false;
-        continue;
-      }
+      // power down if we have no timer running
+      if (pwr_btn.might_power_down()
+          && acc_in.might_power_down()
+          && timed_pwr.might_power_down())
+        set_sleep_mode(SLEEP_MODE_PWR_DOWN | _SLEEP_ENABLE_MASK);
 
       // sleep
-      set_sleep_mode(SLEEP_MODE_PWR_DOWN | _SLEEP_ENABLE_MASK);
       do_sleep();
       _pin_changed = false;
+      // switch to idle sleep mode
       set_sleep_mode(SLEEP_MODE_IDLE | _SLEEP_ENABLE_MASK);
     }
   }
