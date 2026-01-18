@@ -335,14 +335,14 @@ int main()
       }
 
       if (timed_pwr.running()) {
-        //do_sleep();
+        do_sleep();
         _pin_changed = false;
         continue;
       }
 
       // sleep
       set_sleep_mode(SLEEP_MODE_PWR_DOWN | _SLEEP_ENABLE_MASK);
-      //do_sleep();
+      do_sleep();
       _pin_changed = false;
       set_sleep_mode(SLEEP_MODE_IDLE | _SLEEP_ENABLE_MASK);
     }
