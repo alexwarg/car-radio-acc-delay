@@ -91,6 +91,15 @@ struct Debounce
     _running = false;
   }
 
+  void init(uint8_t pv = PINB)
+  {
+    db_time = 0;
+    _last = !!(pv & MSK);
+    _old = _last;
+    _running = false;
+  }
+
+
   bool running() const { return _running; }
 
   bool update(unsigned long ts, uint8_t pv = PINB)
@@ -293,6 +302,11 @@ int main()
   sei();
   DDRB  |= ACC_OUT_MSK; // ACC_OUT as output
   PORTB |= PWR_BTN_MSK; // pullup power btn pin
+
+  // after configuring the IOs initilize the debouncers
+  acc_in.init();
+  pwr_btn.init();
+
   GIMSK = 1 << 5;
   PCMSK = ACC_IN_MSK | PWR_BTN_MSK;
 
