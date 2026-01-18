@@ -84,12 +84,12 @@ struct Timer
 template<uint8_t MSK, unsigned long DELAY = 5, bool NEG = false>
 struct Debounce
 {
-  unsigned long db_time = 0;
+  unsigned long db_time;
   bool _last:1;
   bool _old:1;
   bool _running:1;
 
-  Debounce(uint8_t pv = PINB) : db_time(0)
+  Debounce(uint8_t pv = PINB)
   {
     _last = !!(pv & MSK);
     _old = _last;
@@ -98,7 +98,6 @@ struct Debounce
 
   void init(uint8_t pv = PINB)
   {
-    db_time = 0;
     _last = !!(pv & MSK);
     _old = _last;
     _running = false;
@@ -309,6 +308,17 @@ static void do_sleep()
   cli();
 }
 
+static bool wakeup_pending()
+{
+  return timed_pwr.timeout(timer.cnt_locked())
+         || _pin_changed;
+}
+
+static void clear_wakeups()
+{
+  _pin_changed = false;
+}
+
 int main()
 {
   init_clk();
@@ -349,8 +359,8 @@ int main()
 
     {
       Irq_guard g;
-      if (timed_pwr.timeout(timer.cnt()) || _pin_changed) {
-        _pin_changed = false;
+      if (wakeup_pending()) {
+        clear_wakeups();
         continue;
       }
 
@@ -362,7 +372,7 @@ int main()
 
       // sleep
       do_sleep();
-      _pin_changed = false;
+      clear_wakeups();
       // switch to idle sleep mode
       set_sleep_mode(SLEEP_MODE_IDLE | _SLEEP_ENABLE_MASK);
     }
