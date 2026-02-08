@@ -1,3 +1,5 @@
+// Licensed under the MIT License. See LICENSE.txt file in the project root.
+
 #pragma once
 
 #include "irq_guard.h"

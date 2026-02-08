@@ -1,8 +1,14 @@
+// Licensed under the MIT License. See LICENSE.txt file in the project root.
+
 /**
- * Blink
+ * ACC timer
  *
- * Turns on an LED on for one second,
- * then off for one second, repeatedly.
+ * The project is designed to take two inputs, an ingition (ACC) signal, and a power button.
+ * The output is an ignition (ACC) signal with extra function:
+ *  - In case the ACC input transitions from low-to-high the ACC output is switched to high.
+ *    As long ass ACC input remains high, the button allows switch off and on of the ACC output.
+ *  - In case of ACC input is low, the button allows to toggle the ACC output on and off, with
+ *    an additional timer of 30 minutes to automatically switch off the ACC output.
  */
 
 #include <avr/io.h>
