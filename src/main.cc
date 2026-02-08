@@ -9,6 +9,10 @@
 #include <avr/interrupt.h>
 #include <avr/sleep.h>
 
+#include "timer.h"
+#include "irq_guard.h"
+#include "debounce.h"
+
 enum {
   ACC_OUT_PIN = 4,
   ACC_IN_PIN  = 3,
@@ -17,126 +21,6 @@ enum {
   ACC_OUT_MSK = 1 << ACC_OUT_PIN,
   ACC_IN_MSK  = 1 << ACC_IN_PIN,
   PWR_BTN_MSK = 1 << PWR_BTN_PIN,
-};
-
-class Irq_guard
-{
-  uint8_t f;
-public:
-  Irq_guard() : f(SREG) { cli(); asm volatile ("" : : : "memory"); };
-  ~Irq_guard() { asm volatile ("" : : : "memory"); SREG = f; }
-};
-
-struct Timer
-{
-  enum
-  {
-    Cnt_ms  = 250,
-
-    Freq    = 1000000 / 1024, // 1MHz / 1024
-
-    Tick_ms = 1,
-    Tick_us = 1024,
-
-    Cnt_freq = 1000 / Cnt_ms,
-    Max_tick = Freq / Cnt_freq,
-  };
-
-  unsigned long _cnt = 0;
-
-  unsigned long ticks() const
-  {
-    unsigned long c;
-    Irq_guard g;
-    {
-      c = _cnt << 8;
-    }
-    return c + TCNT0;
-  }
-
-  unsigned long cnt() const
-  {
-    Irq_guard g;
-    return _cnt;
-  }
-
-  unsigned long cnt_locked() const
-  {
-    return _cnt;
-  }
-
-  struct Time
-  {
-    uint8_t tc;
-    unsigned long cnt;
-
-    unsigned long ticks() const { return (cnt << 8) | tc; }
-  };
-
-  Time now() const {
-    Time t;
-    t.cnt = cnt();
-    t.tc = TCNT0;
-    return t;
-  }
-};
-
-template<uint8_t MSK, unsigned long DELAY = 5, bool NEG = false>
-struct Debounce
-{
-  unsigned long db_time;
-  bool _last:1;
-  bool _old:1;
-  bool _running:1;
-
-  Debounce(uint8_t pv = PINB)
-  {
-    _last = !!(pv & MSK);
-    _old = _last;
-    _running = false;
-  }
-
-  void init(uint8_t pv = PINB)
-  {
-    _last = !!(pv & MSK);
-    _old = _last;
-    _running = false;
-  }
-
-
-  bool running() const { return _running; }
-  bool might_sleep() const { return !_running; }
-  // if we might sleep we can power down (PCINT wakes us up)
-  bool might_power_down() const { return true; }
-
-  bool update(unsigned long ts, uint8_t pv = PINB)
-  {
-    if ((!!(pv & MSK)) != _last) {
-      db_time = ts;
-      _running = true;
-      _last = !!(pv & MSK);
-      return false;
-    } else if (!_running) {
-      return true;
-    } else if ((ts - db_time) > DELAY) {
-      _running = false;
-      return true;
-    }
-    return false;
-  }
-
-  bool state() const
-  { return NEG ^ _last; }
-
-  int8_t pressed()
-  {
-    if (_old == _last)
-      return 0;
-
-    bool o = _old;
-    _old = _last;
-    return (NEG ^ o) ? -1 : 1;
-  }
 };
 
 template<typename TIMER, unsigned long ON_TIME_SECS = 1800>
@@ -265,7 +149,7 @@ struct Timed_pwr_on
   }
 };
 
-static Timer timer;
+static cxx::Timer timer;
 
 static void init_clk()
 {
@@ -294,11 +178,11 @@ ISR(PCINT0_vect)
   _pin_changed = true;
 }
 
-static Debounce<PWR_BTN_MSK, 5, true> pwr_btn;
-static Debounce<ACC_IN_MSK, 5> acc_in;
+static cxx::Debounce<PWR_BTN_MSK, 5, true> pwr_btn;
+static cxx::Debounce<ACC_IN_MSK, 5> acc_in;
 
 // 30minutes timeout
-static Timed_pwr_on<Timer, 30 * 60> timed_pwr;
+static Timed_pwr_on<cxx::Timer, 30 * 60> timed_pwr;
 
 static void do_sleep()
 {
@@ -339,7 +223,7 @@ int main()
 
   for (;;) {
     uint8_t pinb = PINB;
-    Timer::Time now = timer.now();
+    cxx::Timer::Time now = timer.now();
     if (acc_in.update(now.ticks(), pinb)
         && acc_in.pressed() != 0)
       timed_pwr.acc_update(acc_in);
@@ -358,7 +242,7 @@ int main()
       continue;
 
     {
-      Irq_guard g;
+      cxx::Irq_guard g;
       if (wakeup_pending()) {
         clear_wakeups();
         continue;
