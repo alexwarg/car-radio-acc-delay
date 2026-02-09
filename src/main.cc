@@ -14,10 +14,12 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <avr/sleep.h>
+#include <stdint.h>
 
 #include "timer.h"
 #include "irq_guard.h"
 #include "debounce.h"
+#include "cxx_duration.h"
 
 enum {
   ACC_OUT_PIN = 4,
@@ -27,12 +29,22 @@ enum {
   ACC_OUT_MSK = 1 << ACC_OUT_PIN,
   ACC_IN_MSK  = 1 << ACC_IN_PIN,
   PWR_BTN_MSK = 1 << PWR_BTN_PIN,
+
+  PWR_DOWN_DELAY_SEC = 30 * 60,
 };
 
-template<typename TIMER, unsigned long ON_TIME_SECS = 1800>
+
+template<typename TIMER, unsigned long ON_TIME_SECS>
 struct Timed_pwr_on
 {
-  unsigned long _pwr_on_tick;
+  using Cnt_max_type = cxx::qseconds<~0>;
+  static constexpr cxx::seconds On_time = ON_TIME_SECS;
+  static constexpr cxx::milliseconds On_time_ms = On_time;
+  static constexpr Cnt_max_type On_time_qs = cxx::duration_cast<Cnt_max_type>(On_time);
+  using Cnt_type = cxx::qseconds<2 * On_time_qs.count()>;
+  static constexpr Cnt_type On_time_diff = On_time_qs;
+
+  Cnt_type _pwr_off_time;
   uint8_t _pwr;
 
   enum
@@ -47,13 +59,12 @@ struct Timed_pwr_on
     return _pwr != P_off;
   }
 
-  bool timeout(unsigned long now) const
+  bool timeout(Cnt_type now) const
   {
     if (_pwr != P_timer)
       return false;
 
-    unsigned long d = now - _pwr_on_tick;
-    if (d >= ON_TIME_SECS * TIMER::Cnt_freq)
+    if (now >= _pwr_off_time)
       return true;
 
     return false;
@@ -65,9 +76,9 @@ struct Timed_pwr_on
     switch_acc_off();
   }
 
-  void start_timer(unsigned long now)
+  void start_timer(Cnt_type now)
   {
-    _pwr_on_tick = now;
+    _pwr_off_time = now + On_time_diff;
     _pwr = P_timer;
   }
 
@@ -97,7 +108,7 @@ struct Timed_pwr_on
   }
 
   template<typename ACC>
-  bool power_btn(ACC const &acc, unsigned long now)
+  bool power_btn(ACC const &acc, Cnt_type now)
   {
     switch (_pwr)
     {
@@ -161,22 +172,31 @@ static void init_clk()
 {
   CLKPR = 0x80;
   CLKPR = 0x03; // prescaler: 8 -> 1MHz
-}	
+}
 
 static void init_timer()
 {
-  TCCR0A = 0x02; // 0x00;
+  //TCCR0A = 0x02; // Clear Timer on Compare match
+  TCCR0A = 0x00; // normal overrun mode
   TCCR0B = 0x05; // normal, 1024 prescaler
-  OCR0A  = timer.Max_tick - 1;
+  //OCR0A  = timer.Max_tick - 1;
   TIFR = 0xff;
-  TIMSK = 0x10; //0x02;
+  //TIMSK = 0x10; // COMP 0A IRQ
+  TIMSK = 0x02; // OVFL 0A
   GTCCR = 0;
 }
 
-ISR(TIMER0_COMPA_vect)
+//ISR(TIMER0_COMPA_vect)
+ISR(TIMER0_OVF_vect)
 {
+  asm volatile ("" : "=m"(timer._cnt));
   ++timer._cnt;
+  asm volatile ("" : : "m"(timer._cnt));
 }
+
+
+static cxx::Debounce<PWR_BTN_MSK, 10, true> pwr_btn;
+static cxx::Debounce<ACC_IN_MSK, 10> acc_in;
 
 static uint8_t _pin_changed = false;
 ISR(PCINT0_vect)
@@ -184,11 +204,9 @@ ISR(PCINT0_vect)
   _pin_changed = true;
 }
 
-static cxx::Debounce<PWR_BTN_MSK, 5, true> pwr_btn;
-static cxx::Debounce<ACC_IN_MSK, 5> acc_in;
-
 // 30minutes timeout
-static Timed_pwr_on<cxx::Timer, 30 * 60> timed_pwr;
+typedef Timed_pwr_on<cxx::Timer, PWR_DOWN_DELAY_SEC> Tmr;
+static Tmr timed_pwr;
 
 static void do_sleep()
 {
@@ -209,6 +227,7 @@ static void clear_wakeups()
   _pin_changed = false;
 }
 
+
 int main()
 {
   init_clk();
@@ -220,26 +239,29 @@ int main()
   DDRB  |= ACC_OUT_MSK; // ACC_OUT as output
   PORTB |= PWR_BTN_MSK; // pullup power btn pin
 
-  // after configuring the IOs initilize the debouncers
-  acc_in.init();
-  pwr_btn.init();
+  {
+    // after configuring the IOs initilize the debouncers
+    uint8_t pinb = PINB;
+    acc_in.init(pinb);
+    pwr_btn.init(pinb);
+  }
 
   GIMSK = 1 << 5;
   PCMSK = ACC_IN_MSK | PWR_BTN_MSK;
 
   for (;;) {
     uint8_t pinb = PINB;
-    cxx::Timer::Time now = timer.now();
-    if (acc_in.update(now.ticks(), pinb)
+    auto now = timer.now();
+    if (acc_in.update(now, pinb)
         && acc_in.pressed() != 0)
       timed_pwr.acc_update(acc_in);
 
-    if (pwr_btn.update(now.ticks(), pinb)
+    if (pwr_btn.update(now, pinb)
         && (pwr_btn.pressed() < 0)) // release
-      timed_pwr.power_btn(acc_in, now.cnt);
+      timed_pwr.power_btn(acc_in, cxx::duration_cast<Tmr::Cnt_type>(now));
 
     // if we hit the timeout, handle it
-    if (timed_pwr.timeout(now.cnt))
+    if (timed_pwr.timeout(cxx::duration_cast<Tmr::Cnt_type>(now)))
       timed_pwr.hit();
 
     if (!pwr_btn.might_sleep()

@@ -12,61 +12,70 @@ namespace cxx {
  * Handles a potentially unstable / noisy input pin and does a debouncing in software.
  * This includes the state tracking and a timeout handling.
  */
-template<uint8_t MSK, unsigned long DELAY = 5, bool NEG = false>
+template<uint8_t MSK, unsigned long DELAY = 10, bool NEG = false>
 struct Debounce
 {
-  unsigned long db_time;
-  bool _last:1;
-  bool _old:1;
-  bool _running:1;
+  using delay_type = cxx::duration<int16_t, cxx::milli>;
+  delay_type db_time;
 
-  Debounce(uint8_t pv = PINB)
+  static constexpr delay_type Delay = DELAY;
+
+  uint8_t _state;
+
+  enum
   {
-    _last = !!(pv & MSK);
-    _old = _last;
-    _running = false;
-  }
+    S_last = 1,
+    S_old  = 2,
+    S_running = 4,
+  };
+
+  Debounce() = default;
 
   void init(uint8_t pv = PINB)
   {
-    _last = !!(pv & MSK);
-    _old = _last;
-    _running = false;
+    bool s = pv & MSK;
+    _state = s ? (S_last | S_last) : 0;
+  }
+
+  explicit Debounce(uint8_t pv)
+  {
+    init(pv);
   }
 
 
-  bool running() const { return _running; }
-  bool might_sleep() const { return !_running; }
+  bool running() const { return _state & S_running; }
+  bool might_sleep() const { return !(_state & S_running); }
   // if we might sleep we can power down (PCINT wakes us up)
   bool might_power_down() const { return true; }
 
-  bool update(unsigned long ts, uint8_t pv = PINB)
+  bool update(delay_type const &ts, uint8_t pv = PINB)
   {
-    if ((!!(pv & MSK)) != _last) {
-      db_time = ts;
-      _running = true;
-      _last = !!(pv & MSK);
+    bool val = pv & MSK;
+    if (val != bool(_state & S_last)) {
+      db_time = ts + Delay;
+      _state = (_state & S_old) | S_running | (val ? S_last : 0);
       return false;
-    } else if (!_running) {
+    } else if (!(_state & S_running)) {
       return true;
-    } else if ((ts - db_time) > DELAY) {
-      _running = false;
+    } else if (ts > db_time) {
+      _state &= ~S_running;
       return true;
     }
     return false;
   }
 
   bool state() const
-  { return NEG ^ _last; }
+  { return NEG ^ bool(_state & S_last); }
 
   int8_t pressed()
   {
-    if (_old == _last)
+    bool last = _state & S_last;
+    bool old  = _state & S_old;
+    if (old == last)
       return 0;
 
-    bool o = _old;
-    _old = _last;
-    return (NEG ^ o) ? -1 : 1;
+    _state = (_state & ~S_old) | (last ? S_old : 0);
+    return (NEG ^ old) ? -1 : 1;
   }
 };
 
