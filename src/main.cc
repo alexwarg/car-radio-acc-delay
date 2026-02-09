@@ -29,7 +29,8 @@ enum {
   ACC_IN_MSK  = 1 << ACC_IN_PIN,
   PWR_BTN_MSK = 1 << PWR_BTN_PIN,
 
-  PWR_DOWN_DELAY_SEC = 30 * 60,
+  PWR_DOWN_DELAY_SEC = 30 * 60, // poer off timer for manually powerd on mode (without ACC on)
+  ACC_DOWN_DELAY_SEC = 20, // delay power down after ACC off for n seconds
 };
 
 
@@ -42,6 +43,10 @@ struct Timed_pwr_on
   static constexpr Cnt_max_type On_time_qs = cxx::duration_cast<Cnt_max_type>(On_time);
   using Cnt_type = cxx::qseconds<2 * On_time_qs.count()>;
   static constexpr Cnt_type On_time_diff = On_time_qs;
+
+  static constexpr cxx::seconds Acc_delay = ACC_DOWN_DELAY_SEC;
+  static constexpr Cnt_max_type Acc_delay_qs = cxx::duration_cast<Cnt_max_type>(Acc_delay);
+  static constexpr Cnt_type Acc_delay_diff = Acc_delay_qs;
 
   Cnt_type _pwr_off_time;
   uint8_t _pwr;
@@ -75,9 +80,9 @@ struct Timed_pwr_on
     switch_acc_off();
   }
 
-  void start_timer(Cnt_type now)
+  void start_timer(Cnt_type timer)
   {
-    _pwr_off_time = now + On_time_diff;
+    _pwr_off_time = timer;
     _pwr = P_timer;
   }
 
@@ -115,7 +120,7 @@ struct Timed_pwr_on
         if (acc.state())
           _pwr = P_acc;
         else
-          start_timer(now);
+          start_timer(now + On_time_diff);
 
         switch_acc_on();
         return false;
@@ -132,7 +137,7 @@ struct Timed_pwr_on
   }
 
   template<typename ACC>
-  void acc_update(ACC const &acc)
+  void acc_update(ACC const &acc, Cnt_type now)
   {
     if (acc.state())
     {
@@ -157,8 +162,15 @@ struct Timed_pwr_on
         case P_timer:
           return;
         case P_acc:
-          _pwr = P_off;
-          switch_acc_off();
+          if (Acc_delay_diff)
+            {
+              start_timer(now + Acc_delay_diff);
+            }
+          else
+            {
+              _pwr = P_off;
+              switch_acc_off();
+            }
           return;
       }
     }
@@ -253,7 +265,7 @@ int main()
     auto now = timer.now();
     if (acc_in.update(now, pinb)
         && acc_in.pressed() != 0)
-      timed_pwr.acc_update(acc_in);
+      timed_pwr.acc_update(acc_in, cxx::duration_cast<Tmr::Cnt_type>(now));
 
     if (pwr_btn.update(now, pinb)
         && (pwr_btn.pressed() < 0)) // release
