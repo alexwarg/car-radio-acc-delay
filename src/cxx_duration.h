@@ -7,6 +7,12 @@
 
 namespace cxx {
 
+template<typename Rep>
+struct duration_values
+{
+  static constexpr Rep zero() noexcept { return Rep(0); }
+};
+
 template<typename Rep, typename Period = ratio<1>>
 struct duration
 {
@@ -28,6 +34,8 @@ struct duration
   constexpr duration(duration<Rep2, Period2> const &d) noexcept
   : _c(static_cast<rep>(d.count() * static_cast<rep>(CF::num) / static_cast<rep>(CF::den)))
   {}
+
+  static constexpr duration zero() noexcept { return duration(duration_values<rep>::zero()); }
 
   friend constexpr duration<signed_type_t<rep>, period>
   operator - (duration const &lhs, duration const &rhs) noexcept
@@ -65,19 +73,23 @@ constexpr To duration_cast(cxx::duration<Rep, Period> const &d)
     return To(static_cast<to_rep>(d.count() * static_cast<CR>(CF::num) / static_cast<CR>(CF::den)));
 }
 
-//using microseconds = duration<uint32_t, micro>;
-using milliseconds = duration<int32_t, milli>;
-using milliseconds16 = duration<int16_t, milli>;
-using seconds      = duration<__int24>;
-using seconds8     = duration<int8_t>;
-using minutes      = duration<__int24, ratio<60>>;
-using minutes8     = duration<int8_t, ratio<60>>;
+template<typename Rep, typename Period>
+struct signed_type<duration<Rep, Period>> { using type = duration<signed_type_t<Rep>, Period>; };
 
-template<unsigned long MAX = ~0>
-using qseconds = duration<int_for_val_t<MAX>, ratio<32, 125>>;
+
+//using microseconds = duration<uint32_t, micro>;
+using milliseconds = duration<uint32_t, milli>;
+using milliseconds16 = duration<uint16_t, milli>;
+using seconds      = duration<__uint24>;
+using seconds8     = duration<uint8_t>;
+using minutes      = duration<__uint24, ratio<60>>;
+using minutes8     = duration<uint8_t, ratio<60>>;
+
+template<unsigned long MAX = ~0ul>
+using qseconds = duration<uint_for_val_t<MAX>, ratio<32, 125>>;
 
 template<unsigned BITS>
-using qseconds_bits = duration<int_for_bits_t<BITS>, ratio<32, 125>>;
+using qseconds_bits = duration<uint_for_bits_t<BITS>, ratio<32, 125>>;
 
 } // namespace cxx
 

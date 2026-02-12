@@ -37,7 +37,7 @@ enum {
 template<typename TIMER, unsigned long ON_TIME_SECS>
 struct Timed_pwr_on
 {
-  using Cnt_max_type = cxx::qseconds<~0>;
+  using Cnt_max_type = cxx::qseconds<~0ul>;
   static constexpr cxx::seconds On_time = ON_TIME_SECS;
   static constexpr cxx::milliseconds On_time_ms = On_time;
   static constexpr Cnt_max_type On_time_qs = cxx::duration_cast<Cnt_max_type>(On_time);
@@ -68,7 +68,9 @@ struct Timed_pwr_on
     if (_pwr != P_timer)
       return false;
 
-    if (now >= _pwr_off_time)
+    using Scnt = cxx::signed_type_t<Cnt_type>;
+
+    if (static_cast<Scnt>(now - _pwr_off_time) >= Scnt::zero())
       return true;
 
     return false;
