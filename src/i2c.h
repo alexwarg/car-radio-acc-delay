@@ -48,6 +48,7 @@ struct I2c_master
   };
 
   typedef void (*Finalizer)(uint8_t err);
+  using Start_ptr = Pgm_ptr<void const>;
 
   static I2c_master m;
 
@@ -212,8 +213,8 @@ private:
       case C_end:
         m.resume = nullptr;
           {
-            typedef void (*done)(uint8_t err);
-            done h = gen_ptr_recast<done const>(m.cmd)[0];
+            Finalizer h = gen_ptr_recast<Finalizer const>(m.cmd)[0];
+            m.cmd = nullptr;
             if (h)
               h(m.len);
           }
@@ -223,8 +224,7 @@ private:
         m.resume = _next_cmd;
         m.cmd += sizeof(void*);
           {
-            typedef void (*done)(uint8_t err);
-            done h = gen_ptr_recast<done const>(m.cmd)[-1];
+            Finalizer h = gen_ptr_recast<Finalizer const>(m.cmd)[-1];
             if (h)
               h(m.len);
           }
