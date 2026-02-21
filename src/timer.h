@@ -17,6 +17,10 @@ namespace cxx {
 
 struct Timer
 {
+private:
+  uint8_t volatile &tcnt() const { return TCNT0; }
+
+public:
   enum
   {
     Cnt_ms  = 256,
@@ -57,12 +61,12 @@ struct Timer
       };
     } n;
 
-    uint8_t c = TCNT0;
+    uint8_t c = tcnt();
       {
         cxx::Irq_guard g;
         n.t = _cnt;
       }
-    n.x = TCNT0;
+    n.x = tcnt();
     if (n.x < c)
       n.r += (1 << 8);
 
