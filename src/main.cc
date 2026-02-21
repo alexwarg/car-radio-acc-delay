@@ -207,7 +207,7 @@ static cxx::Timer timer;
 static void init_clk()
 {
   CLKPR = 0x80;
-  CLKPR = 0x03; // prescaler: 8 -> 1MHz
+  CLKPR = 0x00; // prescaler: 0 -> 8MHz
 }
 
 static void init_timer()
@@ -224,7 +224,7 @@ static void init_timer()
 
 static void init_timer1()
 {
-  TCCR1 = 0x0b; // normal mode + 1024 prescaler
+  TCCR1 = 0x0e; // normal mode + 8192 prescaler
   TIFR  = 0xff;
   TIMSK = 0x04; // OVFL 1
   GTCCR = 0;
