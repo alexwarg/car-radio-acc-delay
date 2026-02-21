@@ -14,7 +14,7 @@ TARGET  := $(BUILDDIR)/firmware.hex
 CCSRC := main.cc display.cc
 
 
-CXXFLAGS := -fno-exceptions -fno-threadsafe-statics -mmcu=$(BOARD_MCU) -Os \
+CXXFLAGS := -Wall -Wextra -fno-exceptions -fno-threadsafe-statics -mmcu=$(BOARD_MCU) -Os \
             -ffunction-sections -fdata-sections \
             -g -DF_CPU=$(CPU_FREQ)L \
             -fomit-frame-pointer --std=c++20
