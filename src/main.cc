@@ -48,6 +48,26 @@ enum : unsigned long
 #if USE_I2C
 I2c_master I2c_master::m;
 Display Display::d;
+
+static I2c_master::Start_ptr i2c_queue;
+static void i2c_start_cmds(I2c_master::Start_ptr p)
+{
+  if (I2c_master::m.busy())
+    i2c_queue = p;
+  else
+    I2c_master::m.start_cmds(p);
+}
+
+static void i2c_finish_cmds(uint8_t)
+{
+  if (!i2c_queue)
+    return;
+
+  auto tmp = i2c_queue;
+  i2c_queue = nullptr;
+  I2c_master::m.start_cmds(tmp);
+}
+
 #endif
 
 
@@ -79,6 +99,15 @@ struct Timed_pwr_on
   {
     return _pwr != P_off;
   }
+
+  bool is_ticking() const
+  {
+    return _pwr == P_timer;
+  }
+
+  Cnt_type eta(Cnt_type now) const
+  { return _pwr_off_time - now; }
+
 
   bool timeout(Cnt_type now) const
   {
@@ -123,16 +152,13 @@ struct Timed_pwr_on
   void switch_acc_on()
   {
     PORTB |= ACC_OUT_MSK;
-#if USE_I2C
-    Display::d.time(10);
-#endif
   }
 
   void switch_acc_off()
   {
     PORTB &= ~ACC_OUT_MSK;
 #if USE_I2C
-    Display::d.off();
+    Display::d.off<i2c_finish_cmds>(i2c_start_cmds);
 #endif
   }
 
@@ -317,6 +343,18 @@ int main()
 
 #if USE_I2C
     I2c_master::m.step();
+
+    if (timed_pwr.is_ticking() && !I2c_master::m.busy())
+      {
+        auto eta = timed_pwr.eta(cxx::duration_cast<Tmr::Cnt_type>(now));
+        auto min = cxx::duration_cast<cxx::minutes8>(eta);
+        auto sec = cxx::duration_cast<cxx::seconds8>(eta - cxx::duration_cast<Tmr::Cnt_type>(min));
+        uint16_t sec2 = sec.count() / 10;
+        uint16_t sec1 = sec.count() - (sec2 * 10);
+        uint16_t min2 = min.count() / 10;
+        uint16_t min1 = min.count() - (min2 * 10);
+        Display::d.time<i2c_finish_cmds>(sec1 | (sec2 << 4) | (min1 << 8) | (min2 << 12), i2c_start_cmds);
+      }
 #endif
 
     if (!pwr_btn.might_sleep()
