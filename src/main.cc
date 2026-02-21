@@ -334,9 +334,10 @@ int main()
 
     if (timed_pwr.is_ticking() && !I2c_master::m.busy())
       {
-        auto eta = timed_pwr.eta(cxx::duration_cast<Tmr::Cnt_type>(now));
+        // assume eta is (far) less than 4h == 240 * 60 seconds (16bit is big enough)
+        auto eta = cxx::duration_cast<cxx::seconds16>(timed_pwr.eta(cxx::duration_cast<Tmr::Cnt_type>(now)));
         auto min = cxx::duration_cast<cxx::minutes8>(eta);
-        auto sec = cxx::duration_cast<cxx::seconds8>(eta - cxx::duration_cast<Tmr::Cnt_type>(min));
+        auto sec = cxx::duration_cast<cxx::seconds8>(eta - min);
         uint16_t sec2 = sec.count() / 10;
         uint16_t sec1 = sec.count() - (sec2 * 10);
         uint16_t min2 = min.count() / 10;
