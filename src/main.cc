@@ -199,8 +199,17 @@ static void init_timer()
   GTCCR = 0;
 }
 
+static void init_timer1()
+{
+  TCCR1 = 0x0b; // normal mode + 1024 prescaler
+  TIFR  = 0xff;
+  TIMSK = 0x04; // OVFL 1
+  GTCCR = 0;
+}
+
 //ISR(TIMER0_COMPA_vect)
-ISR(TIMER0_OVF_vect)
+//ISR(TIMER0_OVF_vect)
+ISR(TIMER1_OVF_vect)
 {
   asm volatile ("" : "=m"(timer._cnt));
   ++timer._cnt;
@@ -244,7 +253,7 @@ static void clear_wakeups()
 int main()
 {
   init_clk();
-  init_timer();
+  init_timer1();
 
   set_sleep_mode(SLEEP_MODE_IDLE | _SLEEP_ENABLE_MASK);
 

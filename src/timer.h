@@ -18,7 +18,8 @@ namespace cxx {
 struct Timer
 {
 private:
-  uint8_t volatile &tcnt() const { return TCNT0; }
+  //uint8_t volatile &tcnt() const { return TCNT0; }
+  uint8_t volatile &tcnt() const { return TCNT1; }
 
 public:
   enum
