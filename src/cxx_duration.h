@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "cxx_ints.h"
 #include "cxx_ratio.h"
 
 namespace cxx {

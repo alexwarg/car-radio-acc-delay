@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <inttypes.h>
+
 namespace cxx {
 
 template<bool B, typename T = void>
@@ -13,40 +15,6 @@ struct enable_if<true, T> { using type = T; };
 
 template<bool B, typename T = void>
 using enable_if_t = typename enable_if<B, T>::type;
-
-template<typename T>
-constexpr int bit_width(T x) noexcept
-{
-  return (x == 0) ? 0 : (1 + bit_width(x >> 1));
-}
-
-template<int bits>
-struct uint_for_bits
-{
-  template<bool COND, typename T, typename F = void>
-  struct _cond;
-
-  template<typename T, typename F>
-  struct _cond<true, T, F> { using type = T; };
-
-  template<typename T, typename F>
-  struct _cond<false, T, F> { using type = F; };
-
-  using type = typename _cond<(bits <= 8),  uint8_t,
-               typename _cond<(bits <= 16), uint16_t,
-               typename _cond<(bits <= 24), __uint24,
-               typename _cond<(bits <= 32), uint32_t,
-               uint64_t>::type>::type>::type>::type;
-};
-
-template<int bits>
-using uint_for_bits_t = typename uint_for_bits<bits>::type;
-
-template<uint64_t val>
-struct uint_for_val : uint_for_bits<bit_width(val)> {};
-
-template<uint64_t val>
-using uint_for_val_t = typename uint_for_val<val>::type;
 
 template<typename T>
 T declval() noexcept;
@@ -80,11 +48,5 @@ template<> struct signed_type<uint32_t> { using type = int32_t; };
 template<> struct signed_type<int32_t> { using type = int32_t; };
 
 template<typename T> using signed_type_t = typename signed_type<T>::type;
-
-template<int bits>
-using int_for_bits_t = signed_type_t<uint_for_bits_t<bits>>;
-
-template<uint64_t val>
-using int_for_val_t = signed_type_t<uint_for_val_t<val>>;
 
 }
