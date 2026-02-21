@@ -30,11 +30,18 @@ struct uint_for_bits
   template<typename T, typename F>
   struct _cond<false, T, F> { using type = F; };
 
+#ifdef __UINT64_TYPE__
   using type = typename _cond<(bits <= 8),  uint8_t,
                typename _cond<(bits <= 16), uint16_t,
                typename _cond<(bits <= 24), __uint24,
                typename _cond<(bits <= 32), uint32_t,
                uint64_t>::type>::type>::type>::type;
+#else
+  using type = typename _cond<(bits <= 8),  uint8_t,
+               typename _cond<(bits <= 16), uint16_t,
+               typename _cond<(bits <= 24), __uint24,
+               uint32_t>::type>::type>::type;
+#endif
 };
 
 /// type alias template for uint_for_bits
@@ -42,17 +49,17 @@ template<int bits>
 using uint_for_bits_t = typename uint_for_bits<bits>::type;
 
 /// return the smallest integer type that can hold the given value
-template<uint64_t val>
+template<__INTMAX_TYPE__ val>
 struct uint_for_val : uint_for_bits<bit_width(val)> {};
 
 /// type alias template for uint_for_val
-template<uint64_t val>
+template<__INTMAX_TYPE__ val>
 using uint_for_val_t = typename uint_for_val<val>::type;
 
 template<int bits>
 using int_for_bits_t = signed_type_t<uint_for_bits_t<bits>>;
 
-template<uint64_t val>
+template<__UINTMAX_TYPE__ val>
 using int_for_val_t = signed_type_t<uint_for_val_t<val>>;
 
 }
