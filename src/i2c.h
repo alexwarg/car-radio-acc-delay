@@ -7,6 +7,8 @@
 #include <stddef.h>
 #include <avr/pgmspace.h>
 
+#include "cxx_pgm.h"
+
 #ifndef SDA_BIT
 #if defined(__AVR_ATtiny25__) || defined(__AVR_ATtiny45__) || defined(__AVR_ATtiny85__)
 enum {
@@ -53,10 +55,16 @@ private:
   //uint8_t _state;
   typedef void (*resume_fn)();
   resume_fn resume;
-  uint8_t const *cmd;
+
+  using Cmd_ptr = Pgm_ptr<uint8_t const>;
+
+  Cmd_ptr cmd;
 
   uint8_t len;
-  uint8_t const *buf;
+  union {
+    Gen_ptr<uint8_t const> buf;
+    uint8_t buf_byte;
+  };
 
   static uint8_t _scl() __attribute__((always_inline))  { return SCL_PIN & M_SCL; }
   static void _scl_l() __attribute__((always_inline))  { SCL_PORT &= ~M_SCL; }
@@ -189,24 +197,23 @@ private:
   }
 
   template<uint8_t (F)()> inline
-  static void _send_bytes_x(void const *ptr, uint8_t len)
+  static void _send_bytes_x(Gen_ptr<void const> ptr, uint8_t len)
   {
-    m.buf = (uint8_t const *)ptr;
+    m.buf = gen_ptr_cast<uint8_t const>(ptr);
     m.len = len;
     _send_byte<F>();
   }
 
   static void _next_cmd()
   {
-    auto next_pgm_buf_byte = [](){ return pgm_read_byte(m.buf++); };
-    auto next_ram_buf_byte = [](){ return *(m.buf++); };
+    static auto next_buf_byte = [](){ return *(m.buf++); };
 
-    switch (pgm_read_byte(m.cmd++)) {
+    switch (*m.cmd++) {
       case C_end:
         m.resume = nullptr;
           {
             typedef void (*done)(uint8_t err);
-            done h = (done)pgm_read_ptr(m.cmd);
+            done h = gen_ptr_recast<done const>(m.cmd)[0];
             if (h)
               h(m.len);
           }
@@ -217,7 +224,7 @@ private:
         m.cmd += sizeof(void*);
           {
             typedef void (*done)(uint8_t err);
-            done h = (done)pgm_read_ptr(m.cmd - sizeof(void*));
+            done h = gen_ptr_recast<done const>(m.cmd)[-1];
             if (h)
               h(m.len);
           }
@@ -238,19 +245,19 @@ private:
         if (m.len)
           return;
 
-        m._send_bytes_x<next_pgm_buf_byte>(
-            pgm_read_ptr(m.cmd - sizeof(uint8_t const *)),
-            pgm_read_byte(m.cmd - 1 - sizeof(uint8_t const *)));
+        m._send_bytes_x<next_buf_byte>(
+            pgm_ptr(gen_ptr_recast<uint8_t const *>(m.cmd)[-1]),
+            m.cmd[- 1 - sizeof(uint8_t const *)]);
         return;
 
       case C_send_bytes_inline:
           {
-            uint8_t l = pgm_read_byte(m.cmd);
+            uint8_t l = *m.cmd;
             m.cmd += l + 1;
             if (m.len)
               return;
 
-            m._send_bytes_x<next_pgm_buf_byte>(m.cmd - l, l);
+            m._send_bytes_x<next_buf_byte>(m.cmd - l, l);
           }
 
         return;
@@ -259,9 +266,9 @@ private:
         m.cmd += 2;
         if (!m.len)
           {
-            m.len = pgm_read_byte(m.cmd - 2);
-            m.buf = (uint8_t const *)((uint16_t)pgm_read_byte(m.cmd - 1));
-            m._send_byte<[]()->uint8_t{ return uint16_t(m.buf); }>();
+            m.len = m.cmd[-2];
+            m.buf_byte = m.cmd[-1];
+            m._send_byte<[]() { return m.buf_byte; }>();
           }
         return;
 
@@ -270,7 +277,7 @@ private:
         if (m.len)
           return;
 
-        m._send_bytes_x<next_ram_buf_byte>(pgm_read_ptr(m.cmd - 2), pgm_read_byte(m.cmd - 3));
+        m._send_bytes_x<next_buf_byte>(ram_ptr(gen_ptr_recast<void const *>(m.cmd)[-1]), m.cmd[-3]);
         return;
 
       case C_send_bytes_ram_len:
@@ -278,8 +285,8 @@ private:
         if (!m.len)
           {
             struct S { uint8_t const *b; uint8_t l; } __attribute__((packed));
-            S const *s = (S const *)pgm_read_ptr(m.cmd - sizeof(void*));
-            m._send_bytes_x<next_pgm_buf_byte>(s->b, s->l);
+            S const *s = gen_ptr_recast<S const *>(m.cmd)[-1];
+            m._send_bytes_x<next_buf_byte>(pgm_ptr(s->b), s->l);
           }
 
         return;
@@ -371,10 +378,10 @@ public:
     SCL_PORT |= M_SCL;
   }
 
-  void start_cmds(void const *cmds)
+  void start_cmds(Pgm_ptr<void const> cmds)
   {
     len = 0;
-    cmd = static_cast<uint8_t const *>(cmds);
+    cmd = gen_ptr_cast<uint8_t const>(cmds);
     resume = _next_cmd;
   }
 

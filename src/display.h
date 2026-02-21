@@ -15,11 +15,11 @@ public:
     if (!_initialized)
       return;
 
-    static auto const PROGMEM c = I2c_master::mk_cmds(
+    static auto const c = Pgm(I2c_master::mk_cmds(
       I2c_master::C_start,
       I2c_master::send_bytes(0x78, 0x00, 0xaf),
       I2c_master::C_stop,
-      I2c_master::End(nullptr));
+      I2c_master::End(nullptr)));
 
     I2c_master::m.start_cmds(&c);
   }
@@ -28,11 +28,11 @@ public:
     if (!_initialized)
       return;
 
-    static auto const PROGMEM c = I2c_master::mk_cmds(
+    static auto const c = Pgm(I2c_master::mk_cmds(
       I2c_master::C_start,
       I2c_master::send_bytes(0x78, 0x00, 0xae),
       I2c_master::C_stop,
-      I2c_master::End(nullptr));
+      I2c_master::End(nullptr)));
 
     I2c_master::m.start_cmds(&c);
   }
@@ -42,7 +42,7 @@ public:
     if (!_initialized)
       return;
 
-    static auto const PROGMEM c = I2c_master::mk_cmds(
+    static auto const c = Pgm(I2c_master::mk_cmds(
       I2c_master::C_start,
       I2c_master::send_bytes(0x78, 0x00,
         0x20, 0x01, 0x21, 0x00, 0x7f, 0x22, 0x00, 0x03),
@@ -52,7 +52,7 @@ public:
       I2c_master::send_bytes_rep<0>(0x0),
       I2c_master::send_bytes_rep<0>(0x0),
       I2c_master::C_stop,
-      I2c_master::End(nullptr));
+      I2c_master::End(nullptr)));
 
     I2c_master::m.start_cmds(&c);
 
@@ -90,9 +90,8 @@ public:
         xx.c.width += tmp;
     };
 
-    set_viewport((ctim >> 12) & 0xf);
-
-    static auto const PROGMEM c = I2c_master::mk_cmds(
+    static auto const c = Pgm(I2c_master::mk_cmds(
+      I2c_master::Cb([](uint8_t) { set_viewport((ctim >> 12) & 0x0f); }),
       I2c_master::C_start,
       I2c_master::send_bytes(0x78, 0x00, 0xaf,
         0x20, 0x00, 0x21),
@@ -150,7 +149,7 @@ public:
       I2c_master::C_stop,
 
 
-      I2c_master::End(nullptr));
+      I2c_master::End(nullptr)));
 
     I2c_master::m.start_cmds(&c);
   }

@@ -273,13 +273,6 @@ static void clear_wakeups()
 }
 
 
-template<typename T>
-class Pgm_ptr
-{
-  uint8_t const *_p;
-  constexpr T operator * () const noexcept { }
-
-};
 int main()
 {
   init_clk();

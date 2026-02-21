@@ -8,7 +8,7 @@
 void
 Display::init()
 {
-  static auto const PROGMEM _init = I2c_master::mk_cmds(
+  static auto const _init = Pgm(I2c_master::mk_cmds(
     // init seq
     I2c_master::C_start,
     I2c_master::send_bytes(
@@ -38,7 +38,7 @@ Display::init()
       else
         Display::d._initialized = 0;
     })
-  );
+  ));
   I2c_master::m.start_cmds(&_init);
 }
 
