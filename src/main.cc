@@ -11,14 +11,21 @@
  *    an additional timer of 30 minutes to automatically switch off the ACC output.
  */
 
+#include <stddef.h>
+
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <avr/sleep.h>
+#include <avr/pgmspace.h>
 
 #include "timer.h"
 #include "irq_guard.h"
 #include "debounce.h"
 #include "cxx_duration.h"
+
+#include "i2c.h"
+#include "display.h"
+
 
 enum {
   ACC_OUT_PIN = 4,
@@ -28,10 +35,20 @@ enum {
   ACC_OUT_MSK = 1 << ACC_OUT_PIN,
   ACC_IN_MSK  = 1 << ACC_IN_PIN,
   PWR_BTN_MSK = 1 << PWR_BTN_PIN,
+};
 
-  PWR_DOWN_DELAY_SEC = 30 * 60, // poer off timer for manually powerd on mode (without ACC on)
+enum : unsigned long
+{
+  PWR_DOWN_DELAY_SEC = 30 * 60ul, // poer off timer for manually powerd on mode (without ACC on)
   ACC_DOWN_DELAY_SEC = 0, // delay power down after ACC off for n seconds
 };
+
+#define USE_I2C 0
+
+#if USE_I2C
+I2c_master I2c_master::m;
+Display Display::d;
+#endif
 
 
 template<typename TIMER, unsigned long ON_TIME_SECS>
@@ -106,11 +123,17 @@ struct Timed_pwr_on
   void switch_acc_on()
   {
     PORTB |= ACC_OUT_MSK;
+#if USE_I2C
+    Display::d.time(10);
+#endif
   }
 
   void switch_acc_off()
   {
     PORTB &= ~ACC_OUT_MSK;
+#if USE_I2C
+    Display::d.off();
+#endif
   }
 
   template<typename ACC>
@@ -250,10 +273,21 @@ static void clear_wakeups()
 }
 
 
+template<typename T>
+class Pgm_ptr
+{
+  uint8_t const *_p;
+  constexpr T operator * () const noexcept { }
+
+};
 int main()
 {
   init_clk();
   init_timer1();
+#if USE_I2C
+  I2c_master::m.init();
+  Display::d.init();
+#endif
 
   set_sleep_mode(SLEEP_MODE_IDLE | _SLEEP_ENABLE_MASK);
 
@@ -280,15 +314,25 @@ int main()
 
     if (pwr_btn.update(now, pinb)
         && (pwr_btn.pressed() < 0)) // release
-      timed_pwr.power_btn(acc_in, cxx::duration_cast<Tmr::Cnt_type>(now));
+      {
+        timed_pwr.power_btn(acc_in, cxx::duration_cast<Tmr::Cnt_type>(now));
+      }
 
     // if we hit the timeout, handle it
     if (timed_pwr.timeout(cxx::duration_cast<Tmr::Cnt_type>(now)))
       timed_pwr.hit();
 
+#if USE_I2C
+    I2c_master::m.step();
+#endif
+
     if (!pwr_btn.might_sleep()
         || !acc_in.might_sleep()
-        || !timed_pwr.might_sleep())
+        || !timed_pwr.might_sleep()
+#if USE_I2C
+        || !I2c_master::m.might_sleep()
+#endif
+        )
       continue;
 
     {
@@ -301,7 +345,11 @@ int main()
       // power down if we have no timer running
       if (pwr_btn.might_power_down()
           && acc_in.might_power_down()
-          && timed_pwr.might_power_down())
+          && timed_pwr.might_power_down()
+#if USE_I2C
+          && I2c_master::m.might_power_down()
+#endif
+          )
         set_sleep_mode(SLEEP_MODE_PWR_DOWN | _SLEEP_ENABLE_MASK);
 
       // sleep
