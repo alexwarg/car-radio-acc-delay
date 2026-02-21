@@ -3,6 +3,7 @@
 #pragma once
 
 #include "irq_guard.h"
+#include "cxx_duration.h"
 
 namespace cxx {
 
@@ -13,11 +14,12 @@ namespace cxx {
  * Hnadles the atomic access to the ounter as well as an intrnal representation for the
  * 40bit counter value...
  */
+
 struct Timer
 {
   enum
   {
-    Cnt_ms  = 250,
+    Cnt_ms  = 256,
 
     Freq    = 1000000 / 1024, // 1MHz / 1024
 
@@ -26,44 +28,45 @@ struct Timer
 
     Cnt_freq = 1000 / Cnt_ms,
     Max_tick = Freq / Cnt_freq,
+
+    Max_tc = 249,
   };
 
-  unsigned long _cnt = 0;
+  __uint24 _cnt = 0;
 
-  unsigned long ticks() const
-  {
-    unsigned long c;
-    cxx::Irq_guard g;
-    {
-      c = _cnt << 8;
-    }
-    return c + TCNT0;
-  }
+  using Cnt_type = cxx::qseconds_bits<24>;
 
-  unsigned long cnt() const
+  Cnt_type cnt() const
   {
     cxx::Irq_guard g;
     return _cnt;
   }
 
-  unsigned long cnt_locked() const
+  Cnt_type cnt_locked() const
   {
     return _cnt;
   }
 
-  struct Time
+  cxx::milliseconds now() const
   {
-    uint8_t tc;
-    unsigned long cnt;
+    union {
+      uint32_t r;
+      struct {
+        uint8_t x;
+        __uint24 t;
+      };
+    } n;
 
-    unsigned long ticks() const { return (cnt << 8) | tc; }
-  };
+    uint8_t c = TCNT0;
+      {
+        cxx::Irq_guard g;
+        n.t = _cnt;
+      }
+    n.x = TCNT0;
+    if (n.x < c)
+      n.r += (1 << 8);
 
-  Time now() const {
-    Time t;
-    t.cnt = cnt();
-    t.tc = TCNT0;
-    return t;
+    return cxx::milliseconds(n.r);
   }
 };
 
