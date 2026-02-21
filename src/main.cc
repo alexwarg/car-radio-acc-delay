@@ -236,18 +236,6 @@ static void init_clk()
   CLKPR = 0x00; // prescaler: 0 -> 8MHz
 }
 
-static void init_timer()
-{
-  //TCCR0A = 0x02; // Clear Timer on Compare match
-  TCCR0A = 0x00; // normal overrun mode
-  TCCR0B = 0x05; // normal, 1024 prescaler
-  //OCR0A  = timer.Max_tick - 1;
-  TIFR = 0xff;
-  //TIMSK = 0x10; // COMP 0A IRQ
-  TIMSK = 0x02; // OVFL 0A
-  GTCCR = 0;
-}
-
 static void init_timer1()
 {
   TCCR1 = 0x0e; // normal mode + 8192 prescaler
