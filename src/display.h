@@ -1,5 +1,7 @@
 // Licensed under the MIT License. See LICENSE.txt file in the project root.
 
+#pragma once
+
 #include "i2c.h"
 #include "Roboto_Condensed_24.h"
 
