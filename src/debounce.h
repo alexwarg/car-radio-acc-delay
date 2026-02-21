@@ -22,7 +22,7 @@ struct Debounce
 
   uint8_t _state;
 
-  enum
+  enum : uint8_t
   {
     S_last = 1,
     S_old  = 2,
@@ -50,10 +50,10 @@ struct Debounce
 
   bool update(delay_type const &ts, uint8_t pv = PINB)
   {
-    bool val = pv & MSK;
-    if (val != bool(_state & S_last)) {
+    uint8_t val = (pv & MSK) ? S_last : 0;
+    if (val != (_state & S_last)) {
       db_time = ts + Delay;
-      _state = (_state & S_old) | S_running | (val ? S_last : 0);
+      _state = (_state & S_old) | S_running | val;
       return false;
     } else if (!(_state & S_running)) {
       return true;
