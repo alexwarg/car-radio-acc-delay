@@ -34,7 +34,7 @@ struct Debounce
   void init(uint8_t pv = PINB)
   {
     bool s = pv & MSK;
-    _state = s ? (S_last | S_last) : 0;
+    _state = s ? (S_last | S_old) : 0;
   }
 
   explicit Debounce(uint8_t pv)
