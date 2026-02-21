@@ -15,8 +15,10 @@ CCSRC := main.cc display.cc
 
 
 CXXFLAGS := -fno-exceptions -fno-threadsafe-statics -mmcu=$(BOARD_MCU) -Os \
-            -ffunction-sections -fdata-sections -O3 -Os -g -DF_CPU=$(CPU_FREQ)L \
+            -ffunction-sections -fdata-sections \
+            -g -DF_CPU=$(CPU_FREQ)L \
             -fomit-frame-pointer --std=c++20
+
 
 OBJECTS := $(addprefix $(BUILDDIR)/, $(addsuffix .o,$(CCSRC)))
 
