@@ -30,7 +30,7 @@ enum {
   PWR_BTN_MSK = 1 << PWR_BTN_PIN,
 
   PWR_DOWN_DELAY_SEC = 30 * 60, // poer off timer for manually powerd on mode (without ACC on)
-  ACC_DOWN_DELAY_SEC = 20, // delay power down after ACC off for n seconds
+  ACC_DOWN_DELAY_SEC = 0, // delay power down after ACC off for n seconds
 };
 
 
