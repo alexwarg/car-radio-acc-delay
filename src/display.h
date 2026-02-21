@@ -70,11 +70,17 @@ public:
     typename STARTER = void (*)(I2c_master::Start_ptr)>
   void time(uint16_t t, STARTER &&starter = [](I2c_master::Start_ptr c) { I2c_master::m.start_cmds(c); })
   {
-    union BUF {
-        struct {
-          uint8_t s, e, idx;
-        };
-        RB_char_desc c;
+    union BUF
+    {
+      struct
+      {
+        struct
+        {
+          uint8_t s, e;
+        } v;
+        uint8_t idx;
+      };
+      I2c_master::Send_buffer_data c;
     };
     static uint16_t ctim;
     static uint8_t xpos;
@@ -91,15 +97,15 @@ public:
 
     static auto set_viewport = [](uint8_t glyph_idx) {
         xx.idx = glyph_idx;
-        xx.s = xpos;
-        xx.e = xpos + pgm_read_byte(&char_desc[glyph_idx].width) - 1;
-        xpos = xx.e + 1;
+        xx.v.s = xpos;
+        xx.v.e = xpos + pgm_read_byte(&char_desc[glyph_idx].width) - 1;
+        xpos = xx.v.e + 1;
     };
 
     static auto set_viewportclr = [](uint8_t width) {
-        xx.s = xpos;
-        xx.e = xpos + width - 1;
-        xpos = xx.e;
+        xx.v.s = xpos;
+        xx.v.e = xpos + width - 1;
+        xpos = xx.v.e;
     };
 
     static auto set_viewportclr_2 = [](uint8_t) {
@@ -108,9 +114,9 @@ public:
 
     static auto draw_char_cb = [](uint8_t){
         uint8_t idx = xx.idx;
-        xx.c.addr = (uint8_t const *)pgm_read_ptr(&char_desc[idx].addr);
-        xx.c.width = pgm_read_byte(&char_desc[idx].width);
-        xx.c.width *= 3;
+        xx.c.addr = pgm_ptr(pgm_read_ptr(&char_desc[idx].addr));
+        xx.c.len = pgm_read_byte(&char_desc[idx].width);
+        xx.c.len *= 3;
     };
 
     static auto const c = Pgm(I2c_master::mk_cmds(
@@ -118,19 +124,19 @@ public:
       I2c_master::C_start,
       I2c_master::send_bytes(0x78, 0x00, 0xaf,
         0x20, 0x00, 0x21),
-      I2c_master::mk_cmds(I2c_master::C_send_bytes_ram, uint8_t(2), &xx),
+      I2c_master::Send_bytes(xx.v),
       I2c_master::send_bytes(0x22, 0x01, 0x03),
       I2c_master::C_stop,
       I2c_master::Cb(draw_char_cb),
       I2c_master::C_start,
       I2c_master::send_bytes(0x78, 0x40),
-      I2c_master::mk_cmds(I2c_master::C_send_bytes_ram_len, &xx),
+      I2c_master::Send_buffer(&xx.c),
       I2c_master::C_stop,
 
       I2c_master::Cb(set_viewportclr_2),
       I2c_master::C_start,
       I2c_master::send_bytes(0x78, 0x00, 0x21),
-      I2c_master::mk_cmds(I2c_master::C_send_bytes_ram, uint8_t(2), &xx),
+      I2c_master::Send_bytes(xx.v),
       I2c_master::C_stop,
       I2c_master::C_start,
       I2c_master::send_bytes(0x78, 0x40),
@@ -140,18 +146,18 @@ public:
       I2c_master::Cb([](uint8_t) { set_viewport((ctim >> 8) & 0x0f); }),
       I2c_master::C_start,
       I2c_master::send_bytes(0x78, 0x00, 0x21),
-      I2c_master::mk_cmds(I2c_master::C_send_bytes_ram, uint8_t(2), &xx),
+      I2c_master::Send_bytes(xx.v),
       I2c_master::C_stop,
       I2c_master::Cb(draw_char_cb),
       I2c_master::C_start,
       I2c_master::send_bytes(0x78, 0x40),
-      I2c_master::mk_cmds(I2c_master::C_send_bytes_ram_len, &xx),
+      I2c_master::Send_buffer(&xx.c),
       I2c_master::C_stop,
 
       I2c_master::Cb(set_viewportclr_2),
       I2c_master::C_start,
       I2c_master::send_bytes(0x78, 0x00, 0x21),
-      I2c_master::mk_cmds(I2c_master::C_send_bytes_ram, uint8_t(2), &xx),
+      I2c_master::Send_bytes(xx.v),
       I2c_master::C_stop,
       I2c_master::C_start,
       I2c_master::send_bytes(0x78, 0x40),
@@ -161,18 +167,18 @@ public:
       I2c_master::Cb([](uint8_t) { set_viewport(10); }),
       I2c_master::C_start,
       I2c_master::send_bytes(0x78, 0x00, 0x21),
-      I2c_master::mk_cmds(I2c_master::C_send_bytes_ram, uint8_t(2), &xx),
+      I2c_master::Send_bytes(xx.v),
       I2c_master::C_stop,
       I2c_master::Cb(draw_char_cb),
       I2c_master::C_start,
       I2c_master::send_bytes(0x78, 0x40),
-      I2c_master::mk_cmds(I2c_master::C_send_bytes_ram_len, &xx),
+      I2c_master::Send_buffer(&xx.c),
       I2c_master::C_stop,
 
       I2c_master::Cb(set_viewportclr_2),
       I2c_master::C_start,
       I2c_master::send_bytes(0x78, 0x00, 0x21),
-      I2c_master::mk_cmds(I2c_master::C_send_bytes_ram, uint8_t(2), &xx),
+      I2c_master::Send_bytes(xx.v),
       I2c_master::C_stop,
       I2c_master::C_start,
       I2c_master::send_bytes(0x78, 0x40),
@@ -182,18 +188,18 @@ public:
       I2c_master::Cb([](uint8_t) { set_viewport((ctim >> 4) & 0x0f); }),
       I2c_master::C_start,
       I2c_master::send_bytes(0x78, 0x00, 0x21),
-      I2c_master::mk_cmds(I2c_master::C_send_bytes_ram, uint8_t(2), &xx),
+      I2c_master::Send_bytes(xx.v),
       I2c_master::C_stop,
       I2c_master::Cb(draw_char_cb),
       I2c_master::C_start,
       I2c_master::send_bytes(0x78, 0x40),
-      I2c_master::mk_cmds(I2c_master::C_send_bytes_ram_len, &xx),
+      I2c_master::Send_buffer(&xx.c),
       I2c_master::C_stop,
 
       I2c_master::Cb(set_viewportclr_2),
       I2c_master::C_start,
       I2c_master::send_bytes(0x78, 0x00, 0x21),
-      I2c_master::mk_cmds(I2c_master::C_send_bytes_ram, uint8_t(2), &xx),
+      I2c_master::Send_bytes(xx.v),
       I2c_master::C_stop,
       I2c_master::C_start,
       I2c_master::send_bytes(0x78, 0x40),
@@ -203,18 +209,18 @@ public:
       I2c_master::Cb([](uint8_t) { set_viewport(ctim & 0x0f); }),
       I2c_master::C_start,
       I2c_master::send_bytes(0x78, 0x00, 0x21),
-      I2c_master::mk_cmds(I2c_master::C_send_bytes_ram, uint8_t(2), &xx),
+      I2c_master::Send_bytes(xx.v),
       I2c_master::C_stop,
       I2c_master::Cb(draw_char_cb),
       I2c_master::C_start,
       I2c_master::send_bytes(0x78, 0x40),
-      I2c_master::mk_cmds(I2c_master::C_send_bytes_ram_len, &xx),
+      I2c_master::Send_buffer(&xx.c),
       I2c_master::C_stop,
 
       I2c_master::Cb([](uint8_t) { set_viewportclr(10); }),
       I2c_master::C_start,
       I2c_master::send_bytes(0x78, 0x00, 0x21),
-      I2c_master::mk_cmds(I2c_master::C_send_bytes_ram, uint8_t(2), &xx),
+      I2c_master::Send_bytes(xx.v),
       I2c_master::C_stop,
       I2c_master::C_start,
       I2c_master::send_bytes(0x78, 0x40),

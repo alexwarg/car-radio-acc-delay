@@ -37,7 +37,6 @@ struct I2c_master
     C_send_bytes,
     C_send_bytes_inline,
     C_send_bytes_rep,
-    C_send_bytes_ram,
     C_send_bytes_ram_len,
   };
 
@@ -49,6 +48,12 @@ struct I2c_master
 
   typedef void (*Finalizer)(uint8_t err);
   using Start_ptr = Pgm_ptr<void const>;
+
+  struct Send_buffer_data
+  {
+    Gen_ptr<void const> addr;
+    uint8_t len;
+  } __attribute__((packed));
 
   static I2c_master m;
 
@@ -207,7 +212,7 @@ private:
 
   static void _next_cmd()
   {
-    static auto next_buf_byte = [](){ return *(m.buf++); };
+    static auto next_buf_byte = []() { return *(m.buf++); };
 
     switch (*m.cmd++) {
       case C_end:
@@ -241,13 +246,13 @@ private:
         return;
 
       case C_send_bytes:
-        m.cmd += 1 + sizeof(uint8_t const *);
+        m.cmd += 1 + sizeof(Gen_ptr<uint8_t const>);
         if (m.len)
           return;
 
         m._send_bytes_x<next_buf_byte>(
-            pgm_ptr(gen_ptr_recast<uint8_t const *>(m.cmd)[-1]),
-            m.cmd[- 1 - sizeof(uint8_t const *)]);
+            gen_ptr_recast<Gen_ptr<uint8_t const>>(m.cmd)[-1],
+            m.cmd[-1 - sizeof(Gen_ptr<uint8_t const>)]);
         return;
 
       case C_send_bytes_inline:
@@ -272,21 +277,12 @@ private:
           }
         return;
 
-      case C_send_bytes_ram:
-        m.cmd += 3;
-        if (m.len)
-          return;
-
-        m._send_bytes_x<next_buf_byte>(ram_ptr(gen_ptr_recast<void const *>(m.cmd)[-1]), m.cmd[-3]);
-        return;
-
       case C_send_bytes_ram_len:
-        m.cmd += sizeof(void*);
+        m.cmd += sizeof(Send_buffer_data const *);
         if (!m.len)
           {
-            struct S { uint8_t const *b; uint8_t l; } __attribute__((packed));
-            S const *s = gen_ptr_recast<S const *>(m.cmd)[-1];
-            m._send_bytes_x<next_buf_byte>(pgm_ptr(s->b), s->l);
+            auto s = gen_ptr_recast<Send_buffer_data const *>(m.cmd)[-1];
+            m._send_bytes_x<next_buf_byte>(s->addr, s->len);
           }
 
         return;
@@ -312,11 +308,26 @@ public:
   {
     uint8_t cmd;
     uint8_t len;
-    void const *buf;
+    Gen_ptr<void const> buf;
 
-    template<unsigned N>
-      constexpr Send_bytes(uint8_t const (&b)[N]) noexcept
-      : cmd(C_send_bytes), len(N), buf(b)
+    template<typename T>
+      constexpr Send_bytes(T const &b) noexcept
+      : cmd(C_send_bytes), len(sizeof(b)), buf(ram_ptr(&b))
+        {}
+
+    template<typename T>
+      constexpr Send_bytes(Pgm<T> const &b) noexcept
+      : cmd(C_send_bytes), len(sizeof(b)), buf(&b)
+        {}
+  } __attribute__((packed));
+
+  struct Send_buffer
+  {
+    uint8_t cmd;
+    Send_buffer_data *d;
+
+    constexpr Send_buffer(Send_buffer_data *ptr) noexcept
+      : cmd(C_send_bytes_ram_len), d(ptr)
         {}
   } __attribute__((packed));
 
