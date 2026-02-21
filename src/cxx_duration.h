@@ -84,6 +84,7 @@ struct signed_type<duration<Rep, Period>> { using type = duration<signed_type_t<
 using milliseconds = duration<uint32_t, std::milli>;
 using milliseconds16 = duration<uint16_t, std::milli>;
 using seconds      = duration<__uint24>;
+using seconds16    = duration<uint16_t>;
 using seconds8     = duration<uint8_t>;
 using minutes      = duration<__uint24, std::ratio<60>>;
 using minutes8     = duration<uint8_t, std::ratio<60>>;
