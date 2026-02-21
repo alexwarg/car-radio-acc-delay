@@ -1,0 +1,44 @@
+// vi:set ft=cpp: -*- Mode: C++ -*-
+// Licensed under the MIT License. See LICENSE.txt file in the project root.
+
+// subset C++ std type_traits, note the functionality is incomplete
+
+#pragma once
+
+#include <type_traits>
+
+namespace __cxx_a
+{
+  using __ratio_int = unsigned long;
+
+  template<typename M, typename N>
+  constexpr typename std::common_type<M, N>::type
+  gcd(M m, N n)
+  {
+    if (n == 0)
+      return m;
+
+    using T = typename std::common_type<M, N>::type;
+
+    T rem = static_cast<T>(m) % static_cast<T>(n);
+    return gcd(n, rem);
+  }
+
+
+  template<__ratio_int Num, __ratio_int Denom = 1>
+  struct ratio
+  {
+    static constexpr __ratio_int num = Num / gcd(Num, Denom);
+    static constexpr __ratio_int den = Denom / gcd(Num, Denom);
+    using type = ratio<num, den>;
+  };
+
+  template<typename R1, typename R2>
+  using ratio_divide = typename ratio<R1::num * R2::den, R1::den * R2::num>::type;
+
+  using micro = ratio<1, 1000000>;
+  using milli = ratio<1, 1000>;
+
+}
+
+namespace std { using namespace __cxx_a; }

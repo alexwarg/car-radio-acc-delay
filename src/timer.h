@@ -26,7 +26,7 @@ public:
 
   using Cnt_type = cxx::qseconds_bits<24>;
   template<unsigned bits = 32>
-  using Hires_type = cxx::duration<cxx::uint_for_bits_t<bits>, cxx::ratio<1, 1024>>;
+  using Hires_type = cxx::duration<cxx::uint_for_bits_t<bits>, std::ratio<1, 1024>>;
 
   Cnt_type cnt() const
   {

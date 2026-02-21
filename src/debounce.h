@@ -13,7 +13,7 @@ namespace cxx {
  * This includes the state tracking and a timeout handling.
  */
 template<uint8_t MSK,
-  auto DELAY = cxx::duration<int16_t, cxx::milli>(10),
+  auto DELAY = cxx::milliseconds16(10),
   bool NEG = false>
 struct Debounce
 {
