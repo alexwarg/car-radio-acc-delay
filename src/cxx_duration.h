@@ -93,4 +93,13 @@ using qseconds_bits = duration<uint_for_bits_t<BITS>, ratio<32, 125>>;
 
 } // namespace cxx
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wliteral-suffix"
 
+constexpr cxx::milliseconds operator ""ms(unsigned long long ms)
+{ return cxx::milliseconds(ms); }
+
+constexpr cxx::seconds operator ""s(unsigned long long s)
+{ return cxx::seconds(s); }
+
+#pragma GCC diagnostic pop
