@@ -9,7 +9,7 @@
 
 namespace __cxx_a
 {
-  using __ratio_int = unsigned long;
+  using __ratio_int = long long;
 
   template<typename M, typename N>
   constexpr typename std::common_type<M, N>::type
@@ -35,6 +35,44 @@ namespace __cxx_a
 
   template<typename R1, typename R2>
   using ratio_divide = typename ratio<R1::num * R2::den, R1::den * R2::num>::type;
+
+  template<typename R1, typename R2>
+  using ratio_multiply = typename ratio<R1::num * R2::num, R1::den * R2::den>::type;
+
+  template<typename R1, typename R2>
+  using ratio_add = typename ratio< R1::num * R2::den + R2::num * R1::den,
+                                    R1::den * R2::den >::type;
+
+  template<typename R1, typename R2>
+  using ratio_substract= typename ratio< R1::num * R2::den - R2::num * R1::den,
+                                         R1::den * R2::den >::type;
+
+  template<typename R1, typename R2>
+  struct ratio_equal
+    : std::integral_constant<bool, (R1::num == R2::num && R1::den == R2::den)> {};
+
+  template<typename R1, typename R2>
+  struct ratio_not_equal
+    : std::integral_constant<bool, (R1::num != R2::num || R1::den != R2::den)> {};
+
+  template<typename R1, typename R2>
+  struct ratio_less
+    : std::integral_constant<bool, (R1::num * R2::den < R2::num * R1::den)> {};
+
+  template<typename R1, typename R2>
+  struct ratio_less_equal
+    : std::integral_constant<bool, (R1::num * R2::den <= R2::num * R1::den)> {};
+
+  template<typename R1, typename R2>
+  struct ratio_greater
+    : std::integral_constant<bool, (R1::num * R2::den > R2::num * R1::den)> {};
+
+  template<typename R1, typename R2>
+  struct ratio_greater_equal
+    : std::integral_constant<bool, (R1::num * R2::den >= R2::num * R1::den)> {};
+
+  template<typename R1, typename R2>
+  constexpr bool ratio_equal_v = ratio_equal<R1, R2>::value;
 
   using micro = ratio<1, 1000000>;
   using milli = ratio<1, 1000>;

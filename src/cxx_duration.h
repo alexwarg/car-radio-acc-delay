@@ -4,6 +4,7 @@
 
 #include "cxx_ints.h"
 #include <ratio>
+#include <limits>
 
 namespace cxx {
 
@@ -61,7 +62,9 @@ constexpr To duration_cast(cxx::duration<Rep, Period> const &d)
 {
   using to_rep = typename To::rep;
   using CF = std::ratio_divide<Period, typename To::period>;
-  using CR = typename std::common_type<Rep, to_rep, int64_t>::type;
+  //using CR = long; //typename std::common_type<Rep, to_rep, uint64_t>::type;
+  //using CR = typename std::common_type<Rep, to_rep>::type;
+  using CR = typename std::common_type<Rep, to_rep, typename cxx::uint_for_val<CF::num * std::numeric_limits<Rep>::max()>::type>::type;
   if (CF::num == 1 && CF::den == 1)
     return To(static_cast<to_rep>(d.count()));
   if (CF::num == 1)
