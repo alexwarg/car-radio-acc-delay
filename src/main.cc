@@ -11,7 +11,7 @@
  *    an additional timer of 30 minutes to automatically switch off the ACC output.
  */
 
-#include <stddef.h>
+#include <cstddef>
 
 #include <avr/io.h>
 #include <avr/interrupt.h>

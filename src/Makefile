@@ -17,7 +17,8 @@ CCSRC := main.cc display.cc
 CXXFLAGS := -Wall -Wextra -fno-exceptions -fno-threadsafe-statics -mmcu=$(BOARD_MCU) -Os \
             -ffunction-sections -fdata-sections \
             -g -DF_CPU=$(CPU_FREQ)L \
-            -fomit-frame-pointer --std=c++20
+            -fomit-frame-pointer --std=c++20 \
+            -I$(SRCROOT)/include
 
 
 OBJECTS := $(addprefix $(BUILDDIR)/, $(addsuffix .o,$(CCSRC)))

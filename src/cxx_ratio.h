@@ -2,18 +2,18 @@
 
 #pragma once
 
-#include "cxx_typetraits.h"
+#include <type_traits>
 
 namespace cxx {
 
 template<typename M, typename N>
-constexpr typename common_type<M, N>::type
+constexpr typename std::common_type<M, N>::type
 gcd(M m, N n)
 {
   if (n == 0)
     return m;
 
-  using T = typename common_type<M, N>::type;
+  using T = typename std::common_type<M, N>::type;
 
   T rem = static_cast<T>(m) % static_cast<T>(n);
   return gcd(n, rem);

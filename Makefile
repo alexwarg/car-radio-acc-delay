@@ -1,5 +1,7 @@
 MKDIR := mkdir -p
-BUILD := $(PWD)/.build
+
+SRCROOT = $(PWD)
+BUILD ?= $(SRCROOT)/.build
 
 SUBDIRS := src
 
@@ -8,11 +10,11 @@ SUBDIRS := src
 all: $(SUBDIRS)
 
 upload:
-	@$(MAKE) BUILDDIR=$(BUILD)/src -C src upload
+	@$(MAKE) BUILDDIR=$(BUILD)/src SRCROOT=$(SRCROOT) -C src upload
 
 clean:
-	@$(MAKE) BUILDDIR=$(BUILD)/src -C src clean
+	@$(MAKE) BUILDDIR=$(BUILD)/src SRCROOT=$(SRCROOT) -C src clean
 
 $(SUBDIRS):
-	@$(MAKE) BUILDDIR=$(BUILD)/$@ -C $@
+	@$(MAKE) BUILDDIR=$(BUILD)/$@  SRCROOT=$(SRCROOT) -C $@
 

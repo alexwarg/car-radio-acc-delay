@@ -3,12 +3,24 @@
 
 #pragma once
 
-#include "cxx_typetraits.h"
+#include <type_traits>
 #include <inttypes.h>
-
 
 namespace cxx {
 
+using namespace cxx_a;
+
+template<typename T> struct signed_type;
+template<> struct signed_type<uint8_t> { using type = int8_t; };
+template<> struct signed_type<int8_t> { using type = int8_t; };
+template<> struct signed_type<uint16_t> { using type = int16_t; };
+template<> struct signed_type<int16_t> { using type = int16_t; };
+template<> struct signed_type<__uint24> { using type = __int24; };
+template<> struct signed_type<__int24> { using type = __int24; };
+template<> struct signed_type<uint32_t> { using type = int32_t; };
+template<> struct signed_type<int32_t> { using type = int32_t; };
+
+template<typename T> using signed_type_t = typename signed_type<T>::type;
 
 /// return the number of bits needed to represent the given integer
 template<typename T>

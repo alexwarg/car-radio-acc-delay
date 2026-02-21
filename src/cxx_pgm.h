@@ -14,7 +14,7 @@
 #include <avr/pgmspace.h>
 #include <inttypes.h>
 
-#include "cxx_typetraits.h"
+#include <type_traits>
 
 template<typename T> class Pgm;
 
@@ -29,7 +29,7 @@ private:
     uint8_t const *const addr = reinterpret_cast<uint8_t const *>(xaddr);
     union X
     {
-      cxx::remove_const_t<T> t;
+      std::remove_const_t<T> t;
       uint8_t a[sizeof(T)];
       uint16_t b[sizeof(T) / 2];
       uint32_t c[sizeof(T) / 4];
@@ -73,7 +73,7 @@ public:
   constexpr explicit operator bool () const noexcept { return _ptr != nullptr; }
   constexpr explicit operator nullptr_t () const noexcept { return reinterpret_cast<nullptr_t>(_ptr); }
 
-  template<typename O, typename = cxx::enable_if_t<cxx::is_convertible<O*, T*>::value>>
+  template<typename O, typename = std::enable_if_t<std::is_convertible<O*, T*>::value>>
   constexpr Pgm_ptr(Pgm_ptr<O> const &o) noexcept : _ptr(o._ptr) {}
 
   template<typename O>
@@ -161,8 +161,8 @@ public:
 
   constexpr Pgm_ptr<T> operator & () const noexcept { return Pgm_ptr<T>(&_o); }
 
-  template<typename INDEX> //, typename = cxx::enable_if_t<cxx::is_array<T>::value>>
-  constexpr Pgm_ptr<cxx::remove_extent_t<T>> operator [] (INDEX idx) const noexcept
+  template<typename INDEX>
+  constexpr Pgm_ptr<std::remove_extent_t<T>> operator [] (INDEX idx) const noexcept
   { return Pgm_ptr<T>(&_o[idx]); }
 
   constexpr T read() const noexcept { return Pgm_ptr<T>::_pgm_read(&_o); }
@@ -196,10 +196,10 @@ public:
   constexpr explicit operator bool () const noexcept { return _ptr != 0; }
   constexpr explicit operator nullptr_t () const noexcept { return reinterpret_cast<nullptr_t>(_ptr); }
 
-  template<typename O, typename = cxx::enable_if_t<cxx::is_convertible<O*, T*>::value>>
+  template<typename O, typename = std::enable_if_t<std::is_convertible<O*, T*>::value>>
   constexpr Gen_ptr(Gen_ptr<O> const &o) noexcept : _ptr(o._ptr) {}
 
-  template<typename O, typename = cxx::enable_if_t<cxx::is_convertible<O*, T*>::value>>
+  template<typename O, typename = std::enable_if_t<std::is_convertible<O*, T*>::value>>
   constexpr Gen_ptr(Pgm_ptr<O> const &o) noexcept : Gen_ptr(o.pgm_addr(), true)  {}
 
   constexpr static Gen_ptr pgm(T *ptr) noexcept { return Gen_ptr(ptr, true); }
