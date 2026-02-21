@@ -11,12 +11,12 @@ BOARD_MCU := attiny85
 CPU_FREQ  := 8000000
 
 TARGET  := $(BUILDDIR)/firmware.hex
-CCSRC := main.cc
+CCSRC := main.cc display.cc
 
 
 CXXFLAGS := -fno-exceptions -fno-threadsafe-statics -mmcu=$(BOARD_MCU) -Os \
             -ffunction-sections -fdata-sections -O3 -Os -g -DF_CPU=$(CPU_FREQ)L \
-            -fomit-frame-pointer -flto
+            -fomit-frame-pointer --std=c++20
 
 OBJECTS := $(addprefix $(BUILDDIR)/, $(addsuffix .o,$(CCSRC)))
 
@@ -44,11 +44,14 @@ endif
 	$(OBJCOPY) -O ihex -R .eeprom $< $@
 
 $(TARGET:.hex=.elf): $(OBJECTS)
-	$(AVRCXX) $(CFLAGS) -o $@ $(CXXFLAGS) -Wl,--gc-sections -fuse-linker-plugin $?
+	$(AVRCXX) $(CFLAGS) -o $@ $(CXXFLAGS) -Wl,--gc-sections -fuse-linker-plugin $^
 	$(AVRSIZE) --mcu=$(BOARD_MCU) -A $@
 
 $(BUILDDIR)/%.cc.o: %.cc | $(BUILDDIR)
 	$(AVRCXX) -MMD -MP -MF $(dir $@)/.$(notdir $@).d -o $@ -c $(CXXFLAGS) $<
+
+$(BUILDDIR)/%.cc.S: %.cc | $(BUILDDIR)
+	$(AVRCXX) -o $@ -S -fverbose-asm $(CXXFLAGS) $<
 
 $(BUILDDIR):
 	$(MKDIR) $@
