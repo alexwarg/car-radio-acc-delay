@@ -20,11 +20,11 @@ gcd(M m, N n)
 }
 
 
-template<int64_t Num, int64_t Denom = 1>
+template<uint32_t Num, uint32_t Denom = 1>
 struct ratio
 {
-  static constexpr int64_t num = Num / gcd(Num, Denom);
-  static constexpr int64_t den = Denom / gcd(Num, Denom);
+  static constexpr uint32_t num = Num / gcd(Num, Denom);
+  static constexpr uint32_t den = Denom / gcd(Num, Denom);
   using type = ratio<num, den>;
 };
 
