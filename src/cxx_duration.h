@@ -64,7 +64,7 @@ constexpr To duration_cast(cxx::duration<Rep, Period> const &d)
   using CF = std::ratio_divide<Period, typename To::period>;
   //using CR = long; //typename std::common_type<Rep, to_rep, uint64_t>::type;
   //using CR = typename std::common_type<Rep, to_rep>::type;
-  using CR = typename std::common_type<Rep, to_rep, typename cxx::uint_for_val<CF::num * std::numeric_limits<Rep>::max()>::type>::type;
+  using CR = typename std::common_type<Rep, to_rep, cxx::uint_for_val_t<CF::num * std::numeric_limits<Rep>::max()>>::type;
   if (CF::num == 1 && CF::den == 1)
     return To(static_cast<to_rep>(d.count()));
   if (CF::num == 1)
