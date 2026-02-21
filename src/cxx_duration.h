@@ -19,6 +19,8 @@ struct duration
   constexpr duration(rep val) noexcept : _c(val) {}
   constexpr rep count() const { return _c; }
 
+  explicit constexpr operator bool () const { return _c != 0; }
+
   constexpr duration(duration const &) noexcept = default;
   template<typename Rep2, typename Period2,
            typename CF = ratio_divide<Period2, Period>,
@@ -39,8 +41,8 @@ struct duration
   friend constexpr bool
   operator >= (duration const &lhs, duration<Rep2, period> const &rhs) noexcept
   { return lhs.count() >= rhs.count(); }
-  template<typename Rep2>
 
+  template<typename Rep2>
   friend constexpr bool
   operator > (duration const &lhs, duration<Rep2, period> const &rhs) noexcept
   { return lhs.count() > rhs.count(); }
