@@ -1,0 +1,42 @@
+// vi:set ft=cpp: -*- Mode: C++ -*-
+// Licensed under the MIT License. See LICENSE.txt file in the project root.
+
+// subset C++ cstddef, note the functionality is incomplete
+
+#pragma once
+
+#include <type_traits>
+
+namespace cxx_a
+{
+  namespace rel_ops
+  {
+    template< class T >
+    constexpr bool operator != (T const &lhs, T const &rhs)
+      noexcept(noexcept(lhs == rhs))
+    { return !(lhs == rhs); }
+
+    template< class T >
+    constexpr bool operator > (T const &lhs, T const &rhs)
+      noexcept(noexcept(rhs < lhs))
+    { return rhs < lhs; }
+
+    template< class T >
+    constexpr bool operator <= (T const &lhs, T const &rhs)
+      noexcept(noexcept(rhs < lhs))
+    { return !(rhs < lhs); }
+
+    template< class T >
+    constexpr bool operator >= (T const &lhs, T const &rhs)
+      noexcept(noexcept(lhs < rhs))
+    { return !(lhs < rhs); }
+  }
+
+  template<typename T>
+  constexpr remove_reference_t<T> &&move(T &&t) noexcept;
+
+  template<class ... Tp>
+  class tuple;
+}
+
+namespace std { using namespace cxx_a; }
