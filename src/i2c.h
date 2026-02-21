@@ -391,6 +391,8 @@ public:
       resume();
   }
 
+  bool busy() const noexcept { return resume != nullptr; }
+
   bool might_sleep() const { return !resume; }
   bool might_power_down() const { return !resume; }
 };
