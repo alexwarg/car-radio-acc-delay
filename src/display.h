@@ -10,7 +10,10 @@ class Display
 public:
   uint8_t _initialized:1;
   void init();
-  void on()
+
+  template<I2c_master::Finalizer finished = nullptr,
+    typename STARTER = void (*)(I2c_master::Start_ptr)>
+  void on(STARTER &&starter = [](I2c_master::Start_ptr c) { I2c_master::m.start_cmds(c); })
   {
     if (!_initialized)
       return;
@@ -19,11 +22,14 @@ public:
       I2c_master::C_start,
       I2c_master::send_bytes(0x78, 0x00, 0xaf),
       I2c_master::C_stop,
-      I2c_master::End(nullptr)));
+      I2c_master::End(finished)));
 
-    I2c_master::m.start_cmds(&c);
+    starter(&c);
   }
-  void off()
+
+  template<I2c_master::Finalizer finished = nullptr,
+    typename STARTER = void (*)(I2c_master::Start_ptr)>
+  void off(STARTER &&starter = [](I2c_master::Start_ptr c) { I2c_master::m.start_cmds(c); })
   {
     if (!_initialized)
       return;
@@ -32,12 +38,14 @@ public:
       I2c_master::C_start,
       I2c_master::send_bytes(0x78, 0x00, 0xae),
       I2c_master::C_stop,
-      I2c_master::End(nullptr)));
+      I2c_master::End(finished)));
 
-    I2c_master::m.start_cmds(&c);
+    starter(&c);
   }
 
-  void clr()
+  template<I2c_master::Finalizer finished = nullptr,
+    typename STARTER = void (*)(I2c_master::Start_ptr)>
+  void clr(STARTER &&starter = [](I2c_master::Start_ptr c) { I2c_master::m.start_cmds(c); })
   {
     if (!_initialized)
       return;
@@ -52,13 +60,15 @@ public:
       I2c_master::send_bytes_rep<0>(0x0),
       I2c_master::send_bytes_rep<0>(0x0),
       I2c_master::C_stop,
-      I2c_master::End(nullptr)));
+      I2c_master::End(finished)));
 
-    I2c_master::m.start_cmds(&c);
+    starter(&c);
 
   }
 
-  void time(uint16_t t)
+  template<I2c_master::Finalizer finished = nullptr,
+    typename STARTER = void (*)(I2c_master::Start_ptr)>
+  void time(uint16_t t, STARTER &&starter = [](I2c_master::Start_ptr c) { I2c_master::m.start_cmds(c); })
   {
     union BUF {
         struct {
@@ -211,9 +221,9 @@ public:
       I2c_master::send_bytes_rep<30>(0x0),
       I2c_master::C_stop,
 
-      I2c_master::End(nullptr)));
+      I2c_master::End(finished)));
 
-    I2c_master::m.start_cmds(&c);
+    starter(&c);
   }
 
   static Display d;
