@@ -12,10 +12,12 @@ namespace cxx {
  * Handles a potentially unstable / noisy input pin and does a debouncing in software.
  * This includes the state tracking and a timeout handling.
  */
-template<uint8_t MSK, unsigned long DELAY = 10, bool NEG = false>
+template<uint8_t MSK,
+  auto DELAY = cxx::duration<int16_t, cxx::milli>(10),
+  bool NEG = false>
 struct Debounce
 {
-  using delay_type = cxx::duration<int16_t, cxx::milli>;
+  using delay_type = decltype(DELAY);
   delay_type db_time;
 
   static constexpr delay_type Delay = DELAY;

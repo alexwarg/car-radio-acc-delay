@@ -86,10 +86,10 @@ using minutes      = duration<__uint24, ratio<60>>;
 using minutes8     = duration<uint8_t, ratio<60>>;
 
 template<unsigned long MAX = ~0ul>
-using qseconds = duration<uint_for_val_t<MAX>, ratio<32, 125>>;
+using qseconds = duration<uint_for_val_t<MAX>, ratio<1, 4>>;
 
 template<unsigned BITS>
-using qseconds_bits = duration<uint_for_bits_t<BITS>, ratio<32, 125>>;
+using qseconds_bits = duration<uint_for_bits_t<BITS>, ratio<1, 4>>;
 
 } // namespace cxx
 

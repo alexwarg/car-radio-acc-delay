@@ -240,8 +240,8 @@ ISR(TIMER1_OVF_vect)
 }
 
 
-static cxx::Debounce<PWR_BTN_MSK, 10, true> pwr_btn;
-static cxx::Debounce<ACC_IN_MSK, 10> acc_in;
+static cxx::Debounce<PWR_BTN_MSK, cxx::Timer::Hires_type<16>(10), true> pwr_btn;
+static cxx::Debounce<ACC_IN_MSK, cxx::Timer::Hires_type<16>(10)> acc_in;
 
 static uint8_t _pin_changed = false;
 ISR(PCINT0_vect)

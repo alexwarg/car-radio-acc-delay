@@ -22,24 +22,11 @@ private:
   uint8_t volatile &tcnt() const { return TCNT1; }
 
 public:
-  enum
-  {
-    Cnt_ms  = 256,
-
-    Freq    = 1000000 / 1024, // 1MHz / 1024
-
-    Tick_ms = 1,
-    Tick_us = 1024,
-
-    Cnt_freq = 1000 / Cnt_ms,
-    Max_tick = Freq / Cnt_freq,
-
-    Max_tc = 249,
-  };
-
   __uint24 _cnt = 0;
 
   using Cnt_type = cxx::qseconds_bits<24>;
+  template<unsigned bits = 32>
+  using Hires_type = cxx::duration<cxx::uint_for_bits_t<bits>, cxx::ratio<1, 1024>>;
 
   Cnt_type cnt() const
   {
@@ -52,7 +39,8 @@ public:
     return _cnt;
   }
 
-  cxx::milliseconds now() const
+
+  Hires_type<> now() const
   {
     union {
       uint32_t r;
@@ -71,7 +59,7 @@ public:
     if (n.x < c)
       n.r += (1 << 8);
 
-    return cxx::milliseconds(n.r);
+    return Hires_type<>(n.r);
   }
 };
 
