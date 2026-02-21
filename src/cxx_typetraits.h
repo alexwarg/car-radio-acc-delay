@@ -19,6 +19,9 @@ using enable_if_t = typename enable_if<B, T>::type;
 template<typename T>
 T declval() noexcept;
 
+template<typename ...>
+using void_t = void;
+
 template<typename ...T> struct common_type;
 
 template<> struct common_type<> {};
