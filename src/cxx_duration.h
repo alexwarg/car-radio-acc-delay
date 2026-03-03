@@ -53,8 +53,18 @@ struct duration
 
   template<typename Rep2>
   friend constexpr bool
+  operator <= (duration const &lhs, duration<Rep2, period> const &rhs) noexcept
+  { return lhs.count() <= rhs.count(); }
+
+  template<typename Rep2>
+  friend constexpr bool
   operator > (duration const &lhs, duration<Rep2, period> const &rhs) noexcept
   { return lhs.count() > rhs.count(); }
+
+  template<typename Rep2>
+  friend constexpr bool
+  operator < (duration const &lhs, duration<Rep2, period> const &rhs) noexcept
+  { return lhs.count() < rhs.count(); }
 };
 
 template<typename To, typename Rep, typename Period>
@@ -64,7 +74,7 @@ constexpr To duration_cast(cxx::duration<Rep, Period> const &d)
   using CF = std::ratio_divide<Period, typename To::period>;
   //using CR = long; //typename std::common_type<Rep, to_rep, uint64_t>::type;
   //using CR = typename std::common_type<Rep, to_rep>::type;
-  using CR = typename std::common_type<Rep, to_rep, cxx::uint_for_val_t<CF::num * std::numeric_limits<Rep>::max()>>::type;
+  using CR = typename std::common_type<Rep, to_rep, typename cxx::uint_for_val<CF::num * std::numeric_limits<Rep>::max()>::type>::type;
   if (CF::num == 1 && CF::den == 1)
     return To(static_cast<to_rep>(d.count()));
   if (CF::num == 1)
