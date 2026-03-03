@@ -235,6 +235,7 @@ struct Timed_pwr_on
       hit();
   }
 
+  static void init(auto &&...) {}
 };
 
 static cxx::Timer timer;
@@ -309,6 +310,12 @@ static Pwr_btn pwr_btn;
 #if USE_I2C
 struct Display_task
 {
+  static void init(auto &&...)
+  {
+    I2c_master::m.init();
+    Display::d.init();
+  }
+
   static void update(auto const &now, auto)
   {
     I2c_master::m.step();
@@ -369,37 +376,26 @@ static void clear_wakeups()
 
 int main()
 {
+  Tasks tasks { acc_in, pwr_btn, timed_pwr };
+
   init_clk();
   init_timer1();
 
-  Tasks tasks { acc_in, pwr_btn, timed_pwr };
-
-#if USE_I2C
-  I2c_master::m.init();
-  Display::d.init();
-#endif
-
   set_sleep_mode(SLEEP_MODE_IDLE | _SLEEP_ENABLE_MASK);
 
-  sei();
   DDRB  |= ACC_OUT_MSK; // ACC_OUT as output
   PORTB |= PWR_BTN_MSK; // pullup power btn pin
 
-  {
-    // after configuring the IOs initilize the debouncers
-    uint8_t pinb = PINB;
-    acc_in.init(pinb);
-    pwr_btn.init(pinb);
-  }
+  // after configuring the IOs initilize the debouncers
+  tasks.init(uint8_t(PINB));
+
+  sei();
 
   GIMSK = 1 << 5;
   PCMSK = ACC_IN_MSK | PWR_BTN_MSK;
 
   for (;;) {
-    uint8_t pinb = PINB;
-    auto now = timer.now();
-
-    tasks.update(now, pinb);
+    tasks.update(timer.now(), uint8_t(PINB));
 
     if (!tasks.might_sleep())
       continue;
