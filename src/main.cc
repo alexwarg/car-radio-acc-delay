@@ -394,27 +394,30 @@ int main()
   GIMSK = 1 << 5;
   PCMSK = ACC_IN_MSK | PWR_BTN_MSK;
 
-  for (;;) {
-    tasks.update(timer.now(), uint8_t(PINB));
-
-    if (!tasks.might_sleep())
-      continue;
-
+  for (;;)
     {
-      cxx::Irq_guard g;
-      if (wakeup_pending()) {
-        clear_wakeups();
+      tasks.update(timer.now(), uint8_t(PINB));
+
+      if (!tasks.might_sleep())
         continue;
-      }
 
-      if (tasks.might_power_down())
-        set_sleep_mode(SLEEP_MODE_PWR_DOWN | _SLEEP_ENABLE_MASK);
+      // irq guard scope
+        {
+          cxx::Irq_guard g;
+          if (wakeup_pending())
+            {
+              clear_wakeups();
+              continue;
+            }
 
-      // sleep
-      do_sleep();
-      clear_wakeups();
-      // switch to idle sleep mode
-      set_sleep_mode(SLEEP_MODE_IDLE | _SLEEP_ENABLE_MASK);
+          if (tasks.might_power_down())
+            set_sleep_mode(SLEEP_MODE_PWR_DOWN | _SLEEP_ENABLE_MASK);
+
+          // sleep
+          do_sleep();
+          clear_wakeups();
+          // switch to idle sleep mode
+          set_sleep_mode(SLEEP_MODE_IDLE | _SLEEP_ENABLE_MASK);
+        }
     }
-  }
 }
