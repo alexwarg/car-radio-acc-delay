@@ -19,6 +19,13 @@ public:
 
   template<typename ...Args>
   void
+  init(Args &&...args)
+  {
+    _h.init(std::forward<Args>(args)...);
+  }
+
+  template<typename ...Args>
+  void
   update(Args &&...args)
   {
     _h.update(std::forward<Args>(args)...);
@@ -49,6 +56,13 @@ public:
 
   template<typename T, typename ...Args>
   explicit constexpr Task_list(T &&t, Args &&...a) : _h(std::forward<T>(t)), _t(std::forward<Args>(a)...) {};
+
+  template<typename ...Args>
+  void init(Args &&...args)
+  {
+    _h.init(args...);
+    _t.init(std::forward<Args>(args)...);
+  }
 
   template<typename ...Args>
   void
