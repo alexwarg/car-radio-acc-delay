@@ -22,6 +22,7 @@
 #include "irq_guard.h"
 #include "debounce.h"
 #include "cxx_duration.h"
+#include "task_list.h"
 
 #include "i2c.h"
 #include "display.h"
@@ -226,6 +227,14 @@ struct Timed_pwr_on
       }
     }
   }
+
+  void update(auto const &now, auto &&...)
+  {
+    // if we hit the timeout, handle it
+    if (timeout(cxx::duration_cast<Cnt_type>(now)))
+      hit();
+  }
+
 };
 
 static cxx::Timer timer;
@@ -253,10 +262,6 @@ ISR(TIMER1_OVF_vect)
   asm volatile ("" : : "m"(timer._cnt));
 }
 
-
-static cxx::Debounce<PWR_BTN_MSK, cxx::Timer::Hires_type<16>(10), true> pwr_btn;
-static cxx::Debounce<ACC_IN_MSK, cxx::Timer::Hires_type<16>(10)> acc_in;
-
 static uint8_t _pin_changed = false;
 ISR(PCINT0_vect)
 {
@@ -266,6 +271,81 @@ ISR(PCINT0_vect)
 // 30minutes timeout
 typedef Timed_pwr_on<cxx::Timer, PWR_DOWN_DELAY_SEC> Tmr;
 static Tmr timed_pwr;
+
+template<typename IN = cxx::Debounce<ACC_IN_MSK, cxx::Timer::Hires_type<16>(10)>>
+struct Acc_input : IN
+{
+  void update(auto const &now, uint8_t pv)
+  {
+    if (IN::update(now, pv) && IN::pressed() != 0)
+      timed_pwr.acc_update(*this, cxx::duration_cast<Tmr::Cnt_type>(now));
+  }
+};
+
+static Acc_input acc_in;
+
+template<typename IN = cxx::Debounce<PWR_BTN_MSK, cxx::Timer::Hires_type<16>(10), true>>
+struct Pwr_btn : IN
+{
+  void update(auto const &now, uint8_t pv)
+  {
+    if (!IN::update(now, pv))
+      return;
+
+    switch (IN::pressed(now))
+      {
+      case 0:
+      default:
+        break;
+      case 1:
+        timed_pwr.power_btn(acc_in, cxx::duration_cast<Tmr::Cnt_type>(now));
+        break;
+      }
+  }
+};
+
+static Pwr_btn pwr_btn;
+
+#if USE_I2C
+struct Display_task
+{
+  static void update(auto const &now, auto)
+  {
+    I2c_master::m.step();
+
+    if (timed_pwr.is_ticking() && !I2c_master::m.busy())
+      {
+        // assume eta is (far) less than 4h == 240 * 60 seconds (16bit is big enough)
+        auto eta = cxx::duration_cast<cxx::seconds16>(timed_pwr.eta(cxx::duration_cast<Tmr::Cnt_type>(now)));
+        auto min = cxx::duration_cast<cxx::minutes8>(eta);
+        auto sec = cxx::duration_cast<cxx::seconds8>(eta - min);
+        uint16_t sec2 = sec.count() / 10;
+        uint16_t sec1 = sec.count() - (sec2 * 10);
+        uint16_t min2 = min.count() / 10;
+        uint16_t min1 = min.count() - (min2 * 10);
+        Display::d.time<i2c_finish_cmds>(sec1 | (sec2 << 4) | (min1 << 8) | (min2 << 12), i2c_start_cmds);
+      }
+#if 0
+    else if(!timed_pwr.is_on() && Display::d._on)
+      Display::d.off<i2c_finish_cmds>(i2c_start_cmds);
+#endif
+  }
+
+  static bool
+  might_sleep() { return I2c_master::m.might_sleep(); }
+
+  static bool
+  might_power_down() { return I2c_master::m.might_power_down(); }
+};
+
+using Tasks = Task_list<Acc_input<> &, Pwr_btn<> &, Tmr &, Display_task>;
+
+#else
+
+using Tasks = Task_list<Acc_input<> &, Pwr_btn<> &, Tmr &>;
+
+#endif
+
 
 static void do_sleep()
 {
@@ -291,6 +371,9 @@ int main()
 {
   init_clk();
   init_timer1();
+
+  Tasks tasks { acc_in, pwr_btn, timed_pwr };
+
 #if USE_I2C
   I2c_master::m.init();
   Display::d.init();
@@ -315,44 +398,10 @@ int main()
   for (;;) {
     uint8_t pinb = PINB;
     auto now = timer.now();
-    if (acc_in.update(now, pinb)
-        && acc_in.pressed() != 0)
-      timed_pwr.acc_update(acc_in, cxx::duration_cast<Tmr::Cnt_type>(now));
 
-    if (pwr_btn.update(now, pinb)
-        && (pwr_btn.pressed() < 0)) // release
-      {
-        timed_pwr.power_btn(acc_in, cxx::duration_cast<Tmr::Cnt_type>(now));
-      }
+    tasks.update(now, pinb);
 
-    // if we hit the timeout, handle it
-    if (timed_pwr.timeout(cxx::duration_cast<Tmr::Cnt_type>(now)))
-      timed_pwr.hit();
-
-#if USE_I2C
-    I2c_master::m.step();
-
-    if (timed_pwr.is_ticking() && !I2c_master::m.busy())
-      {
-        // assume eta is (far) less than 4h == 240 * 60 seconds (16bit is big enough)
-        auto eta = cxx::duration_cast<cxx::seconds16>(timed_pwr.eta(cxx::duration_cast<Tmr::Cnt_type>(now)));
-        auto min = cxx::duration_cast<cxx::minutes8>(eta);
-        auto sec = cxx::duration_cast<cxx::seconds8>(eta - min);
-        uint16_t sec2 = sec.count() / 10;
-        uint16_t sec1 = sec.count() - (sec2 * 10);
-        uint16_t min2 = min.count() / 10;
-        uint16_t min1 = min.count() - (min2 * 10);
-        Display::d.time<i2c_finish_cmds>(sec1 | (sec2 << 4) | (min1 << 8) | (min2 << 12), i2c_start_cmds);
-      }
-#endif
-
-    if (!pwr_btn.might_sleep()
-        || !acc_in.might_sleep()
-        || !timed_pwr.might_sleep()
-#if USE_I2C
-        || !I2c_master::m.might_sleep()
-#endif
-        )
+    if (!tasks.might_sleep())
       continue;
 
     {
@@ -362,14 +411,7 @@ int main()
         continue;
       }
 
-      // power down if we have no timer running
-      if (pwr_btn.might_power_down()
-          && acc_in.might_power_down()
-          && timed_pwr.might_power_down()
-#if USE_I2C
-          && I2c_master::m.might_power_down()
-#endif
-          )
+      if (tasks.might_power_down())
         set_sleep_mode(SLEEP_MODE_PWR_DOWN | _SLEEP_ENABLE_MASK);
 
       // sleep
