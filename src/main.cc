@@ -46,32 +46,6 @@ enum : unsigned long
 
 #define USE_I2C 0
 
-#if USE_I2C
-I2c_master I2c_master::m;
-Display Display::d;
-
-static I2c_master::Start_ptr i2c_queue;
-static void i2c_start_cmds(I2c_master::Start_ptr p)
-{
-  if (I2c_master::m.busy())
-    i2c_queue = p;
-  else
-    I2c_master::m.start_cmds(p);
-}
-
-static void i2c_finish_cmds(uint8_t)
-{
-  if (!i2c_queue)
-    return;
-
-  auto tmp = i2c_queue;
-  i2c_queue = nullptr;
-  I2c_master::m.start_cmds(tmp);
-}
-
-#endif
-
-
 template<typename TIMER, unsigned long ON_TIME_SECS>
 struct Timed_pwr_on
 {
@@ -158,9 +132,6 @@ struct Timed_pwr_on
   void switch_acc_off()
   {
     PORTB &= ~ACC_OUT_MSK;
-#if USE_I2C
-    Display::d.off<i2c_finish_cmds>(i2c_start_cmds);
-#endif
   }
 
   template<typename ACC>
@@ -308,8 +279,32 @@ struct Pwr_btn : IN
 static Pwr_btn pwr_btn;
 
 #if USE_I2C
+
+I2c_master I2c_master::m;
+Display Display::d;
+
+
 struct Display_task
 {
+  static I2c_master::Start_ptr i2c_queue;
+  static void i2c_start_cmds(I2c_master::Start_ptr p)
+  {
+    if (I2c_master::m.busy())
+      i2c_queue = p;
+    else
+      I2c_master::m.start_cmds(p);
+  }
+
+  static void i2c_finish_cmds(uint8_t)
+  {
+    if (!i2c_queue)
+      return;
+
+    auto tmp = i2c_queue;
+    i2c_queue = nullptr;
+    I2c_master::m.start_cmds(tmp);
+  }
+
   static void init(auto &&...)
   {
     I2c_master::m.init();
@@ -322,6 +317,7 @@ struct Display_task
 
     if (timed_pwr.is_ticking() && !I2c_master::m.busy())
       {
+        Display::d._on = 1;
         // assume eta is (far) less than 4h == 240 * 60 seconds (16bit is big enough)
         auto eta = cxx::duration_cast<cxx::seconds16>(timed_pwr.eta(cxx::duration_cast<Tmr::Cnt_type>(now)));
         auto min = cxx::duration_cast<cxx::minutes8>(eta);
@@ -332,10 +328,11 @@ struct Display_task
         uint16_t min1 = min.count() - (min2 * 10);
         Display::d.time<i2c_finish_cmds>(sec1 | (sec2 << 4) | (min1 << 8) | (min2 << 12), i2c_start_cmds);
       }
-#if 0
-    else if(!timed_pwr.is_on() && Display::d._on)
-      Display::d.off<i2c_finish_cmds>(i2c_start_cmds);
-#endif
+    else if(!timed_pwr.is_ticking() && Display::d._on)
+      {
+        Display::d._on = 0;
+        Display::d.off<i2c_finish_cmds>(i2c_start_cmds);
+      }
   }
 
   static bool
@@ -345,13 +342,15 @@ struct Display_task
   might_power_down() { return I2c_master::m.might_power_down(); }
 };
 
+I2c_master::Start_ptr Display_task::i2c_queue;
+
 using Tasks = Task_list<Acc_input<> &, Pwr_btn<> &, Tmr &, Display_task>;
 
-#else
+#else // USE_I2C == 0 ... no display support
 
 using Tasks = Task_list<Acc_input<> &, Pwr_btn<> &, Tmr &>;
 
-#endif
+#endif // USE_I2C == 0
 
 
 static void do_sleep()

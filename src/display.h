@@ -9,6 +9,7 @@ class Display
 {
 public:
   uint8_t _initialized:1;
+  uint8_t _on:1;
   void init();
 
   template<I2c_master::Finalizer finished = nullptr,
