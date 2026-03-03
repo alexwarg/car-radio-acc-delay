@@ -18,6 +18,8 @@ template<uint8_t MSK,
 struct Debounce
 {
   using delay_type = decltype(DELAY);
+
+protected:
   delay_type db_time;
 
   static constexpr delay_type Delay = DELAY;
@@ -26,17 +28,35 @@ struct Debounce
 
   enum : uint8_t
   {
-    S_last = 1,
-    S_old  = 2,
-    S_running = 4,
+    S_cur    = 0x01,
+    S_old    = 0x02,
+    S_db_run = 0x04,
+    S_usr_1  = 0x08,
+    S_usr_2  = 0x10,
+    S_usr_3  = 0x20,
+    S_usr_4  = 0x40,
+    S_usr_5  = 0x80
   };
 
+  void state_modify(uint8_t del, uint8_t add)
+  { _state = (_state & ~del) | add; }
+
+  void state_add(uint8_t s)
+  { _state |= s; }
+
+  void state_del(uint8_t s)
+  { _state &= ~s; }
+
+  bool have_state(uint8_t s) const
+  { return _state & s; }
+
+public:
   Debounce() = default;
 
   void init(uint8_t pv = PINB)
   {
     bool s = pv & MSK;
-    _state = s ? (S_last | S_old) : 0;
+    _state = s ? (S_cur | S_old) : 0;
   }
 
   explicit Debounce(uint8_t pv)
@@ -44,41 +64,42 @@ struct Debounce
     init(pv);
   }
 
-
-  bool running() const { return _state & S_running; }
-  bool might_sleep() const { return !(_state & S_running); }
+  bool might_sleep() const { return !have_state(S_db_run); }
   // if we might sleep we can power down (PCINT wakes us up)
   bool might_power_down() const { return true; }
 
   bool update(delay_type const &ts, uint8_t pv = PINB)
   {
-    uint8_t val = (pv & MSK) ? S_last : 0;
-    if (val != (_state & S_last)) {
+    uint8_t val = (pv & MSK) ? S_cur : 0;
+    if (val != (_state & S_cur)) {
       db_time = ts + Delay;
-      _state = (_state & S_old) | S_running | val;
+      state_modify(S_cur, S_db_run | val);
       return false;
-    } else if (!(_state & S_running)) {
+    } else if (!have_state(S_db_run)) {
       return true;
     } else if (ts > db_time) {
-      _state &= ~S_running;
+      state_del(S_db_run);
       return true;
     }
     return false;
   }
 
   bool state() const
-  { return NEG ^ bool(_state & S_last); }
+  { return NEG ^ have_state(S_cur); }
 
   int8_t pressed()
   {
-    bool last = _state & S_last;
-    bool old  = _state & S_old;
-    if (old == last)
+    bool cur = have_state(S_cur);
+    bool old = have_state(S_old);
+    if (old == cur)
       return 0;
 
-    _state = (_state & ~S_old) | (last ? S_old : 0);
+    state_modify(S_old, cur ? S_old : 0);
     return (NEG ^ old) ? -1 : 1;
   }
+
+  int8_t pressed(delay_type const &)
+  { return pressed(); }
 };
 
 }
