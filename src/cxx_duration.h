@@ -74,7 +74,7 @@ constexpr To duration_cast(cxx::duration<Rep, Period> const &d)
   using CF = std::ratio_divide<Period, typename To::period>;
   //using CR = long; //typename std::common_type<Rep, to_rep, uint64_t>::type;
   //using CR = typename std::common_type<Rep, to_rep>::type;
-  using CR = typename std::common_type<Rep, to_rep, typename cxx::uint_for_val<CF::num * std::numeric_limits<Rep>::max()>::type>::type;
+  using CR = typename std::common_type<Rep, to_rep, cxx::uint_for_val_t<CF::num * std::numeric_limits<Rep>::max()>>::type;
   if (CF::num == 1 && CF::den == 1)
     return To(static_cast<to_rep>(d.count()));
   if (CF::num == 1)
@@ -88,6 +88,25 @@ constexpr To duration_cast(cxx::duration<Rep, Period> const &d)
 
 template<typename Rep, typename Period>
 struct signed_type<duration<Rep, Period>> { using type = duration<signed_type_t<Rep>, Period>; };
+
+template< class Rep1, class Period1, class Rep2, class Period2 >
+struct common_type<duration<Rep1, Period1>, duration<Rep2, Period2>>
+{
+private:
+  using _period = std::ratio<std::gcd(Period1::num, Period2::num),
+                             std::lcm(Period1::den, Period2::den)>;
+  using _p1 = typename std::ratio_divide<_period, Period1>::type;
+  using _p2 = typename std::ratio_divide<_period, Period2>::type;
+
+  static constexpr int _max_bits = (_p1::den > _p2::den)
+    ? (sizeof(Rep1) * 8) + bit_width(_p1::den - 1)
+    : (sizeof(Rep2) * 8) + bit_width(_p2::den - 1);
+
+  using _max_int = uint_for_bits_t<_max_bits>;
+
+public:
+  using type = duration<common_type_t<Rep1, Rep2, _max_int>, _period>;
+};
 
 
 //using microseconds = duration<uint32_t, micro>;
