@@ -24,6 +24,14 @@ namespace __cxx_a
     return gcd(n, rem);
   }
 
+  template<typename M, typename N>
+  constexpr typename std::common_type<M, N>::type
+  lcm(M m, N n)
+  {
+    auto t = gcd(m, n);
+    return t ? (m / t * n) : 0;
+  }
+
 
   template<__ratio_int Num, __ratio_int Denom = 1>
   struct ratio
@@ -44,7 +52,7 @@ namespace __cxx_a
                                     R1::den * R2::den >::type;
 
   template<typename R1, typename R2>
-  using ratio_substract= typename ratio< R1::num * R2::den - R2::num * R1::den,
+  using ratio_substract = typename ratio< R1::num * R2::den - R2::num * R1::den,
                                          R1::den * R2::den >::type;
 
   template<typename R1, typename R2>
