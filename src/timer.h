@@ -27,6 +27,7 @@ public:
   using Cnt_type = cxx::qseconds_bits<24>;
   template<unsigned bits = 32>
   using Hires_type = cxx::duration<cxx::uint_for_bits_t<bits>, std::ratio<1, 1024>>;
+  using Time_type = Hires_type<>;
 
   Cnt_type cnt() const
   {
@@ -40,6 +41,7 @@ public:
   }
 
 
+  template<bool locked = false>
   Hires_type<> now() const
   {
     union {
@@ -51,16 +53,38 @@ public:
     } n;
 
     uint8_t c = tcnt();
+    if (!locked)
       {
         cxx::Irq_guard g;
         n.t = _cnt;
       }
+    else
+      n.t = _cnt;
+
     n.x = tcnt();
     if (n.x < c)
       n.r += (1 << 8);
 
     return Hires_type<>(n.r);
   }
+
+  template<bool locked = false, typename T>
+  std::enable_if_t<std::ratio_equal<typename T::period, Hires_type<>::period>::value>
+  now(T &n) const
+  {
+    n = this->now<locked>();
+  }
+
+  template<bool locked = false, typename T>
+  std::enable_if_t<std::ratio_equal<typename T::period, Cnt_type::period>::value>
+  now(T &n) const
+  {
+    if (locked)
+      n = cnt_locked();
+    else
+      n = cnt();
+  }
+
 };
 
 }
