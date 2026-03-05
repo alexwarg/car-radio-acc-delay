@@ -140,6 +140,12 @@ namespace detail {
       _t.clear_wakeups();
     }
   };
+
+  template<typename S, typename = void>
+    struct callable : std::false_type {};
+
+  template<typename S>
+    struct callable<S, std::void_t<decltype(std::declval<S>()())>> : std::true_type {};
 }
 
 template<typename ...T>
@@ -147,6 +153,15 @@ struct Task_list : public detail::Task_list<T...>
 {
   using detail::Task_list<T...>::Task_list;
 
+private:
+  template<typename S, typename R = decltype(std::declval<S>()())>
+    R _get(S &&s) { return s(); }
+
+  template<typename S, typename R = decltype(*std::declval<S>()),
+    typename = std::enable_if_t<!detail::callable<S>::value>>
+    R _get(S &&s) { return *s; }
+
+public:
   template<typename CLOCK, typename SLEEP_CTL, typename STATE>
    __attribute__((always_inline))
   void task_loop(CLOCK &&clock, SLEEP_CTL &&sleep_ctl, STATE &&state)
@@ -161,8 +176,7 @@ struct Task_list : public detail::Task_list<T...>
             clock.template now<true>(now); // used locked version, we have IRQs of already
           }
 
-        std::remove_reference_t<decltype(state())> extra_arg = state();
-        this->update(now, extra_arg);
+        this->update(now, _get(state));
 
         if (!this->might_sleep())
           continue;
