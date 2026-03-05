@@ -274,8 +274,8 @@ public:
   void clear_wakeups()
   { clear(); }
 
-  void update(auto ...) const {}
-  void init(auto ...) const {}
+  void update(auto &&...) const {}
+  void init(auto &&...) const {}
 
   bool might_sleep() const { return true; }
   bool might_power_down() const { return true; }
@@ -400,7 +400,7 @@ struct Display_task
     Display::d.init();
   }
 
-  static void update(auto const &now, auto)
+  static void update(auto const &now, auto &&)
   {
     I2c_master::m.step();
 
