@@ -15,7 +15,6 @@
 
 #include <avr/io.h>
 #include <avr/interrupt.h>
-#include <avr/sleep.h>
 #include <avr/pgmspace.h>
 
 #include "timer.h"
@@ -23,6 +22,7 @@
 #include "debounce.h"
 #include "cxx_duration.h"
 #include "task_list.h"
+#include "sleep_support.h"
 
 #include "i2c.h"
 #include "display.h"
@@ -46,7 +46,10 @@ enum : unsigned long
 
 #define USE_I2C 0
 
-template<typename TIMER, unsigned long ON_TIME_SECS>
+//---------------------------------------------------------
+//  main application logic: handling the ACC output pin
+//  accoring to input state and timer based power-off...
+template<unsigned long ON_TIME_SECS>
 struct Timed_pwr_on
 {
   using Cnt_max_type = cxx::qseconds<~0ul>;
@@ -60,15 +63,15 @@ struct Timed_pwr_on
   static constexpr Cnt_max_type Acc_delay_qs = cxx::duration_cast<Cnt_max_type>(Acc_delay);
   static constexpr Cnt_type Acc_delay_diff = Acc_delay_qs;
 
-  Cnt_type _pwr_off_time;
-  uint8_t _pwr;
-
   enum
   {
-    P_off   = 0,
-    P_acc   = 1,
-    P_timer = 2,
+    P_off   = 0, //< ACC output is off
+    P_acc   = 1, //< ACC output is on due to ACC input on
+    P_timer = 2, //< ACC output is on and power-off timer is ticking
   };
+
+  Cnt_type _pwr_off_time;
+  uint8_t _pwr;
 
   bool is_on() const
   {
@@ -199,6 +202,12 @@ struct Timed_pwr_on
     }
   }
 
+  // task loop API
+  using update_time_type = Cnt_type;
+  using wakeup_time_type = Cnt_type;
+
+  static void init(auto &&...) {}
+
   void update(auto const &now, auto &&...)
   {
     // if we hit the timeout, handle it
@@ -206,9 +215,17 @@ struct Timed_pwr_on
       hit();
   }
 
-  static void init(auto &&...) {}
+  bool wakeup_pending(auto const &now) const
+  {
+    return timeout(now);
+  }
+
+  static void clear_wakeups() {}
 };
 
+
+//---------------------------------------------------------
+// Timer / Clock instance
 static cxx::Timer timer;
 
 static void init_clk()
@@ -234,59 +251,131 @@ ISR(TIMER1_OVF_vect)
   asm volatile ("" : : "m"(timer._cnt));
 }
 
-static uint8_t _pin_changed = false;
+//---------------------------------------------------------
+// recording pin changed IRQ and translating it into a
+// wakeup reason for the task loop
+class Pin_changed_task
+{
+  uint8_t _s;
+
+public:
+  using update_time_type = void;
+  using wakeup_time_type = void;
+
+  void set() { _s = true; }
+  void clear() { _s = false; }
+  bool is_set() const { return _s; }
+
+  bool wakeup_pending(auto ...) const
+  {
+    return is_set();
+  }
+
+  void clear_wakeups()
+  { clear(); }
+
+  void update(auto ...) const {}
+  void init(auto ...) const {}
+
+  bool might_sleep() const { return true; }
+  bool might_power_down() const { return true; }
+};
+
+static Pin_changed_task _pin_changed;
 ISR(PCINT0_vect)
 {
-  _pin_changed = true;
+  _pin_changed.set();
 }
+//---------------------------------------------------------
+
+
+//---------------------------------------------------------
+// mixin for wrapping a debounced IO pin to be handled in a
+// task loop.
+// The DERVIVED class needs to provide on_update() function
+// for handling updates.
+template<typename DERIVED, auto &pin>
+struct Io_pin_task
+{
+  using wakeup_time_type = void;
+
+  void update(auto &&now, uint8_t pv)
+  {
+    if (!pin.update(now, pv))
+      return;
+
+    static_cast<DERIVED *>(this)->on_update(now, pin.pressed(now));
+  }
+
+  template<typename ...Args>
+  void init(Args &&...args) { pin.init(std::forward<Args>(args)...); }
+
+  bool might_sleep() const { return pin.might_sleep(); }
+  bool might_power_down() const { return pin.might_power_down(); }
+
+  void clear_wakeups() const {}
+  bool wakeup_pending(auto ...) const { return false; }
+};
+//---------------------------------------------------------
+
 
 // 30minutes timeout
-typedef Timed_pwr_on<cxx::Timer, PWR_DOWN_DELAY_SEC> Tmr;
-static Tmr timed_pwr;
+using Tmr = Timed_pwr_on<PWR_DOWN_DELAY_SEC>;
 
-template<typename IN = cxx::Debounce<ACC_IN_MSK, cxx::Timer::Hires_type<16>(10)>>
-struct Acc_input : IN
+static Tmr timed_pwr;
+static cxx::Debounce<ACC_IN_MSK, cxx::Timer::Hires_type<16>(10)> acc_in;
+static cxx::Debounce<PWR_BTN_MSK, cxx::Timer::Hires_type<16>(10), true> pwr_btn;
+
+//---------------------------------------------------------
+// ACC input pin handling
+class Acc_in : public Io_pin_task<Acc_in, acc_in>
 {
-  void update(auto const &now, uint8_t pv)
+public:
+  using update_time_type = cxx::Timer::Time_type; //< needed for task loop
+  void on_update(update_time_type const &now, int8_t key)
   {
-    if (IN::update(now, pv) && IN::pressed() != 0)
-      timed_pwr.acc_update(*this, cxx::duration_cast<Tmr::Cnt_type>(now));
+    if (key != 0)
+      timed_pwr.acc_update(acc_in, cxx::duration_cast<Tmr::Cnt_type>(now));
   }
 };
 
-static Acc_input acc_in;
-
-template<typename IN = cxx::Debounce<PWR_BTN_MSK, cxx::Timer::Hires_type<16>(10), true>>
-struct Pwr_btn : IN
+//---------------------------------------------------------
+// power button handling
+class Pwr_btn : public Io_pin_task<Pwr_btn, pwr_btn>
 {
-  void update(auto const &now, uint8_t pv)
+public:
+  using update_time_type = cxx::Timer::Time_type; //< needed for task loop
+  void on_update(update_time_type const &now, int8_t key)
   {
-    if (!IN::update(now, pv))
-      return;
-
-    switch (IN::pressed(now))
+    switch (key)
       {
       case 0:
       default:
         break;
-      case 1:
+      case 1: // short press / click
         timed_pwr.power_btn(acc_in, cxx::duration_cast<Tmr::Cnt_type>(now));
         break;
       }
   }
 };
 
-static Pwr_btn pwr_btn;
 
+//---------------------------------------------------------
 #if USE_I2C
 
 I2c_master I2c_master::m;
 Display Display::d;
 
 
+//---------------------------------------------------------
+// task around i2c and display
 struct Display_task
 {
+  using update_time_type = Tmr::Cnt_type;
+  using wakeup_time_type = void;
+
   static I2c_master::Start_ptr i2c_queue;
+
   static void i2c_start_cmds(I2c_master::Start_ptr p)
   {
     if (I2c_master::m.busy())
@@ -340,42 +429,27 @@ struct Display_task
 
   static bool
   might_power_down() { return I2c_master::m.might_power_down(); }
+
+  static constexpr bool
+  wakeup_pending(auto ...) { return false; }
+
+  static void clear_wakeups() {}
 };
 
 I2c_master::Start_ptr Display_task::i2c_queue;
 
-using Tasks = Task_list<Acc_input<> &, Pwr_btn<> &, Tmr &, Display_task>;
+using Tasks = Task_list<Acc_in, Pwr_btn, Tmr &, Pin_changed_task &, Display_task>;
 
 #else // USE_I2C == 0 ... no display support
 
-using Tasks = Task_list<Acc_input<> &, Pwr_btn<> &, Tmr &>;
+using Tasks = Task_list<Acc_in, Pwr_btn, Tmr &, Pin_changed_task &>;
 
 #endif // USE_I2C == 0
 
-
-static void do_sleep()
-{
-  asm volatile ("" : : : "memory");
-  sei();
-  sleep_cpu();
-  cli();
-}
-
-static bool wakeup_pending()
-{
-  return timed_pwr.timeout(timer.cnt_locked())
-         || _pin_changed;
-}
-
-static void clear_wakeups()
-{
-  _pin_changed = false;
-}
-
-
+//---------------------------------------------------------
 int main()
 {
-  Tasks tasks { acc_in, pwr_btn, timed_pwr };
+  Tasks tasks { Acc_in{}, Pwr_btn{}, timed_pwr, _pin_changed };
 
   init_clk();
   init_timer1();
@@ -393,30 +467,5 @@ int main()
   GIMSK = 1 << 5;
   PCMSK = ACC_IN_MSK | PWR_BTN_MSK;
 
-  for (;;)
-    {
-      tasks.update(timer.now(), uint8_t(PINB));
-
-      if (!tasks.might_sleep())
-        continue;
-
-      // irq guard scope
-        {
-          cxx::Irq_guard g;
-          if (wakeup_pending())
-            {
-              clear_wakeups();
-              continue;
-            }
-
-          if (tasks.might_power_down())
-            set_sleep_mode(SLEEP_MODE_PWR_DOWN | _SLEEP_ENABLE_MASK);
-
-          // sleep
-          do_sleep();
-          clear_wakeups();
-          // switch to idle sleep mode
-          set_sleep_mode(SLEEP_MODE_IDLE | _SLEEP_ENABLE_MASK);
-        }
-    }
+  tasks.task_loop(timer, Sleep_support{}, [](){ return PINB; });
 }
