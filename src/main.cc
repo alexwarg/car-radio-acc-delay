@@ -467,5 +467,5 @@ int main()
   GIMSK = 1 << 5;
   PCMSK = ACC_IN_MSK | PWR_BTN_MSK;
 
-  tasks.task_loop(timer, Sleep_support{}, [](){ return PINB; });
+  tasks.task_loop(timer, Sleep_support{}, &PINB);
 }
