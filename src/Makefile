@@ -41,6 +41,8 @@ clean:
 upload: $(TARGET)
 	$(AVRDUDE) $(AVRDUDE_CFG) -P /dev/ttyUSB0 -p $(BOARD_MCU) -c buspirate -U flash:w:$(TARGET):i
 
+uploadeep: $(TARGET:.hex=.eep)
+	$(AVRDUDE) $(AVRDUDE_CFG) -P /dev/ttyUSB0 -p $(BOARD_MCU) -c buspirate -U eeprom:w:$<:i
 
 ifeq (,$(filter clean,$(MAKECMDGOALS)))
   -include $(wildcard $(BUILDDIR)/.*.d)

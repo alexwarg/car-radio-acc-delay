@@ -9,6 +9,9 @@ SUBDIRS := src
 
 all: $(SUBDIRS)
 
+uploadeep:
+	@$(MAKE) BUILDDIR=$(BUILD)/src SRCROOT=$(SRCROOT) -C src uploadeep
+
 upload:
 	@$(MAKE) BUILDDIR=$(BUILD)/src SRCROOT=$(SRCROOT) -C src upload
 
