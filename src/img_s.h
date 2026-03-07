@@ -1,0 +1,12 @@
+#pragma once
+
+#include "cxx_pgm.h"
+
+struct img_s {
+  static constexpr unsigned w = 8;
+  static constexpr unsigned h = 16;
+  static constexpr auto const data = pgm_array<unsigned char>(
+   0x78, 0xFC, 0xCE, 0x86, 0x86, 0x8E, 0x1C, 0x18, 0x18, 0x38, 0x71, 0x61, 0x61, 0x73, 0x3F, 0x1E
+  );
+
+};
