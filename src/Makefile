@@ -7,12 +7,18 @@ AVRDUDE ?= $(AVRDUDE_PREFIX)avrdude
 AVRDUDE_CFG ?= -C $(AVRDUDE_PREFIX)avrdude.conf
 AVRSIZE ?= avr-size
 
+TOOLDIR := $(PWD)/tools
+
+GEN_IMG := $(TOOLDIR)/gen-oled-bitmap.py
+
+
 BOARD_MCU := attiny85
 CPU_FREQ  := 8000000
 
 TARGET  := $(BUILDDIR)/firmware.hex
 CCSRC := main.cc display.cc
 
+OLED_IMGS := off settings delay s
 
 CXXFLAGS := -Wall -Wextra -fno-exceptions -fno-threadsafe-statics -mmcu=$(BOARD_MCU) -Os \
             -ffunction-sections -fdata-sections \
@@ -22,11 +28,12 @@ CXXFLAGS := -Wall -Wextra -fno-exceptions -fno-threadsafe-statics -mmcu=$(BOARD_
 
 
 OBJECTS := $(addprefix $(BUILDDIR)/, $(addsuffix .o,$(CCSRC)))
+OLED_HEADERS := $(patsubst %, img_%.h, $(subst -,_,$(OLED_IMGS)))
 
 
 .PHONY: all clean upload
 
-all: $(TARGET)
+all: $(TARGET) $(OLED_HEADERS)
 
 clean:
 	$(RM) $(OBJECTS) $(TARGET)
@@ -45,6 +52,9 @@ endif
 
 %.hex: %.elf
 	$(OBJCOPY) -O ihex -R .eeprom $< $@
+
+$(OLED_HEADERS): img_%.h: assets/$(subst _,-,%).tiff
+	$(GEN_IMG) $< $@ img_$(*F)
 
 $(TARGET:.hex=.elf): $(OBJECTS)
 	$(AVRCXX) $(CFLAGS) -o $@ $(CXXFLAGS) -Wl,--gc-sections -fuse-linker-plugin $^
