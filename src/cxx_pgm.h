@@ -169,6 +169,37 @@ public:
   constexpr operator T () const noexcept { return read(); }
 } PROGMEM;
 
+template<typename T, unsigned SIZE>
+class Pgm<T[SIZE]>
+{
+private:
+  T _o[SIZE];
+
+public:
+
+  constexpr Pgm() = default;
+  template<typename ...E, typename = std::enable_if_t<sizeof...(E) == SIZE>>
+  constexpr Pgm(E &&...t) noexcept : _o(t...) {}
+
+  Pgm(Pgm const &) = delete;
+  Pgm(Pgm &&) = delete;
+  Pgm &operator = (Pgm const &) = delete;
+  Pgm &operator = (Pgm &&) = delete;
+
+  constexpr Pgm_ptr<T> operator & () const noexcept { return Pgm_ptr<T>(_o); }
+
+  template<typename INDEX>
+  constexpr Pgm_ptr<std::remove_extent_t<T>> operator [] (INDEX idx) const noexcept
+  { return Pgm_ptr<T>(&_o[idx]); }
+} PROGMEM;
+
+
+template<typename E, typename ...T>
+static inline constexpr Pgm<E[sizeof...(T)]> pgm_array(T &&...t) noexcept
+{
+  return Pgm<E[sizeof...(T)]>{t...};
+}
+
 template<typename T>
 class Gen_ptr
 {
