@@ -16,10 +16,12 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <avr/pgmspace.h>
+#include <avr/eeprom.h>
 
 #include "timer.h"
 #include "irq_guard.h"
 #include "debounce.h"
+#include "btn.h"
 #include "cxx_duration.h"
 #include "task_list.h"
 #include "sleep_support.h"
@@ -46,6 +48,28 @@ enum : unsigned long
 
 #define USE_I2C 0
 
+template<typename T>
+class Eem
+{
+  T _v;
+
+public:
+  Eem() = default;
+  constexpr Eem(T const &v) noexcept : _v(v) {}
+  Eem(Eem const &) = delete;
+  Eem(Eem &&) = delete;
+  Eem &operator = (Eem const &) = delete;
+  Eem &operator = (Eem &&) = delete;
+
+
+  T get() const noexcept { return T(eeprom_read_word(&_v._c)); }
+  void write(T const &v) noexcept { eeprom_write_word(&_v._c, v.count()); }
+
+  operator T () const noexcept { return get(); }
+
+
+};
+
 //---------------------------------------------------------
 //  main application logic: handling the ACC output pin
 //  accoring to input state and timer based power-off...
@@ -57,30 +81,80 @@ struct Timed_pwr_on
   static constexpr cxx::milliseconds On_time_ms = On_time;
   static constexpr Cnt_max_type On_time_qs = cxx::duration_cast<Cnt_max_type>(On_time);
   using Cnt_type = cxx::qseconds<2 * On_time_qs.count()>;
-  static constexpr Cnt_type On_time_diff = On_time_qs;
 
   static constexpr cxx::seconds Acc_delay = ACC_DOWN_DELAY_SEC;
   static constexpr Cnt_max_type Acc_delay_qs = cxx::duration_cast<Cnt_max_type>(Acc_delay);
+
+#if USE_I2C
+  static Eem<Cnt_type> On_time_diff;
+  static Eem<Cnt_type> Acc_delay_diff;
+#else
+  static constexpr Cnt_type On_time_diff = On_time_qs;
   static constexpr Cnt_type Acc_delay_diff = Acc_delay_qs;
+#endif
 
   enum
   {
     P_off   = 0, //< ACC output is off
     P_acc   = 1, //< ACC output is on due to ACC input on
     P_timer = 2, //< ACC output is on and power-off timer is ticking
+
+    P_settings = 4,
+    P_edit_setting = 8,
+    P_set_off_tmr = 0x00,
+    P_set_acc_delay =0x10,
   };
 
   Cnt_type _pwr_off_time;
   uint8_t _pwr;
 
+#if USE_I2C
+  bool in_settings() const { return _pwr & P_settings; }
+  bool in_settings_edit() const { return _pwr & P_edit_setting; }
+#else
+  bool in_settings() const { return false; }
+  bool in_settings_edit() const { return false; }
+#endif
+
+  uint8_t current_setting() const
+  {
+    return _pwr & P_set_acc_delay;
+  }
+
+  uint8_t next_setting()
+  {
+    _pwr ^= P_set_acc_delay;
+    return current_setting();
+  }
+
+  void enter_settings()
+  {
+    _pwr = (_pwr & 7) | P_settings;
+  }
+
+  void leave_settings()
+  {
+    _pwr = (_pwr & 3);
+  }
+
+  void enter_settings_edit()
+  {
+    _pwr |= P_edit_setting;
+  }
+
+  void leave_settings_edit()
+  {
+    _pwr &= ~P_edit_setting;
+  }
+
   bool is_on() const
   {
-    return _pwr != P_off;
+    return _pwr & (P_acc | P_timer);
   }
 
   bool is_ticking() const
   {
-    return _pwr == P_timer;
+    return _pwr & P_timer;
   }
 
   Cnt_type eta(Cnt_type now) const
@@ -89,7 +163,7 @@ struct Timed_pwr_on
 
   bool timeout(Cnt_type now) const
   {
-    if (_pwr != P_timer)
+    if (!(_pwr & P_timer))
       return false;
 
     using Scnt = cxx::signed_type_t<Cnt_type>;
@@ -102,26 +176,26 @@ struct Timed_pwr_on
 
   void hit()
   {
-    _pwr = P_off;
+    _pwr &= ~P_timer;
     switch_acc_off();
   }
 
   void start_timer(Cnt_type timer)
   {
     _pwr_off_time = timer;
-    _pwr = P_timer;
+    _pwr |= P_timer;
   }
 
   bool stop_timer()
   {
-    if (_pwr != P_timer)
+    if (!(_pwr & P_timer))
       return false;
 
-    _pwr = P_off;
+    _pwr &= ~P_timer;
     return true;
   }
 
-  bool running() const { return _pwr == P_timer; }
+  bool running() const { return _pwr & P_timer; }
   // timers always can sleep, just might not power down...
   bool might_sleep() const { return true; }
   // timers always can sleep, just might not power down...
@@ -140,66 +214,61 @@ struct Timed_pwr_on
   template<typename ACC>
   bool power_btn(ACC const &acc, Cnt_type now)
   {
-    switch (_pwr)
-    {
-      case P_off:
-        if (acc.state())
-          _pwr = P_acc;
-        else
-          start_timer(now + On_time_diff);
-
-        switch_acc_on();
-        return false;
-      case P_timer:
+    if (_pwr & P_timer)
+      {
         stop_timer();
         switch_acc_off();
         return true;
-      case P_acc:
-        _pwr = P_off;
+      }
+
+    if (_pwr & P_acc)
+      {
+        _pwr &= ~P_acc;
         switch_acc_off();
         return true;
-    }
+      }
+
+    // off
+    if (acc.state())
+      _pwr |= P_acc;
+    else
+      start_timer(now + On_time_diff);
+
+    switch_acc_on();
     return false;
+  }
+
+  void long_btn_press(Cnt_type now)
+  {
+    if (is_ticking())
+      start_timer(now + On_time_diff);
   }
 
   template<typename ACC>
   void acc_update(ACC const &acc, Cnt_type now)
   {
     if (acc.state())
-    {
-      switch (_pwr)
       {
-        default:
-          return;
-        case P_timer:
-          _pwr = P_acc;
-          return;
-        case P_off:
-          _pwr = P_acc;
-          switch_acc_on();
-          return;
+        if (_pwr & P_timer)
+          _pwr = (_pwr & ~P_timer) | P_acc;
+        else if (!(_pwr & P_acc))
+          {
+            _pwr |= P_acc;
+            switch_acc_on();
+          }
+
+        return;
       }
-    }
-    else
-    {
-      switch (_pwr)
+
+    // acc input is off ...
+    if (_pwr & P_acc)
       {
-        case P_off:
-        case P_timer:
-          return;
-        case P_acc:
-          if (Acc_delay_diff)
-            {
-              start_timer(now + Acc_delay_diff);
-            }
-          else
-            {
-              _pwr = P_off;
-              switch_acc_off();
-            }
-          return;
+        _pwr &= ~P_acc;
+        if (!in_settings() && (Cnt_type)Acc_delay_diff)
+          start_timer(now + Acc_delay_diff);
+        else
+          switch_acc_off();
       }
-    }
   }
 
   // task loop API
@@ -223,6 +292,13 @@ struct Timed_pwr_on
   static void clear_wakeups() {}
 };
 
+#if USE_I2C
+template<unsigned long ON_TIME_SECS>
+EEMEM Eem<typename Timed_pwr_on<ON_TIME_SECS>::Cnt_type> Timed_pwr_on<ON_TIME_SECS>::On_time_diff(On_time_qs);
+
+template<unsigned long ON_TIME_SECS>
+EEMEM Eem<typename Timed_pwr_on<ON_TIME_SECS>::Cnt_type> Timed_pwr_on<ON_TIME_SECS>::Acc_delay_diff(Acc_delay_qs);
+#endif
 
 //---------------------------------------------------------
 // Timer / Clock instance
@@ -324,7 +400,7 @@ using Tmr = Timed_pwr_on<PWR_DOWN_DELAY_SEC>;
 
 static Tmr timed_pwr;
 static cxx::Debounce<ACC_IN_MSK, cxx::Timer::Hires_type<16>(10)> acc_in;
-static cxx::Debounce<PWR_BTN_MSK, cxx::Timer::Hires_type<16>(10), true> pwr_btn;
+static cxx::Btn<PWR_BTN_MSK, cxx::Timer::Hires_type<16>(10), true> pwr_btn;
 
 //---------------------------------------------------------
 // ACC input pin handling
@@ -339,29 +415,14 @@ public:
   }
 };
 
-//---------------------------------------------------------
-// power button handling
-class Pwr_btn : public Io_pin_task<Pwr_btn, pwr_btn>
-{
-public:
-  using update_time_type = cxx::Timer::Time_type; //< needed for task loop
-  void on_update(update_time_type const &now, int8_t key)
-  {
-    switch (key)
-      {
-      case 0:
-      default:
-        break;
-      case 1: // short press / click
-        timed_pwr.power_btn(acc_in, cxx::duration_cast<Tmr::Cnt_type>(now));
-        break;
-      }
-  }
-};
-
 
 //---------------------------------------------------------
 #if USE_I2C
+
+#include "img_settings.h"
+#include "img_off.h"
+#include "img_delay.h"
+#include "img_s.h"
 
 I2c_master I2c_master::m;
 Display Display::d;
@@ -400,6 +461,17 @@ struct Display_task
     Display::d.init();
   }
 
+  static void show_time(cxx::seconds16 const &eta)
+  {
+    auto min = cxx::duration_cast<cxx::minutes8>(eta);
+    auto sec = cxx::duration_cast<cxx::seconds8>(eta - min);
+    uint16_t sec2 = sec.count() / 10;
+    uint16_t sec1 = sec.count() - (sec2 * 10);
+    uint16_t min2 = min.count() / 10;
+    uint16_t min1 = min.count() - (min2 * 10);
+    Display::d.time<i2c_finish_cmds>(sec1 | (sec2 << 4) | (min1 << 8) | (min2 << 12), i2c_start_cmds);
+  }
+
   static void update(auto const &now, auto &&)
   {
     I2c_master::m.step();
@@ -408,16 +480,9 @@ struct Display_task
       {
         Display::d._on = 1;
         // assume eta is (far) less than 4h == 240 * 60 seconds (16bit is big enough)
-        auto eta = cxx::duration_cast<cxx::seconds16>(timed_pwr.eta(cxx::duration_cast<Tmr::Cnt_type>(now)));
-        auto min = cxx::duration_cast<cxx::minutes8>(eta);
-        auto sec = cxx::duration_cast<cxx::seconds8>(eta - min);
-        uint16_t sec2 = sec.count() / 10;
-        uint16_t sec1 = sec.count() - (sec2 * 10);
-        uint16_t min2 = min.count() / 10;
-        uint16_t min1 = min.count() - (min2 * 10);
-        Display::d.time<i2c_finish_cmds>(sec1 | (sec2 << 4) | (min1 << 8) | (min2 << 12), i2c_start_cmds);
+        show_time(cxx::duration_cast<cxx::seconds16>(timed_pwr.eta(cxx::duration_cast<Tmr::Cnt_type>(now))));
       }
-    else if(!timed_pwr.is_ticking() && Display::d._on)
+    else if(!(timed_pwr.is_ticking() || timed_pwr.in_settings()) && Display::d._on)
       {
         Display::d._on = 0;
         Display::d.off<i2c_finish_cmds>(i2c_start_cmds);
@@ -434,9 +499,185 @@ struct Display_task
   wakeup_pending(auto ...) { return false; }
 
   static void clear_wakeups() {}
+
+  using Etime = decltype(timed_pwr)::Cnt_type;
+  static Etime _edit_time;
+
+  static void enter_settings()
+  {
+    timed_pwr.enter_settings();
+    Display::d._on = 1;
+    static auto const c = Pgm(I2c_master::mk_cmds(
+          Display::mk_blit<img_settings>(4, 0, 0xaf),
+          Display::mk_blit<img_off>(4, 2),
+          I2c_master::End(i2c_finish_cmds)));
+
+    i2c_start_cmds(&c);
+    _edit_time = timed_pwr.On_time_diff;
+    show_time(cxx::duration_cast<cxx::seconds16>(_edit_time));
+  }
+
+  static void leave_settings()
+  {
+    static auto const c = Pgm(I2c_master::mk_cmds(
+          Display::mk_clr(4, 0, 32, 4),
+          I2c_master::End(i2c_finish_cmds)));
+
+    i2c_start_cmds(&c);
+    timed_pwr.leave_settings();
+  }
+
+  static void enter_settings_edit()
+  {
+    timed_pwr.enter_settings_edit();
+    static auto const c = Pgm(I2c_master::mk_cmds(
+          Display::mk_blit<img_s>(4 + img_settings::w + 2, 0),
+          I2c_master::End(i2c_finish_cmds)));
+
+    i2c_start_cmds(&c);
+  }
+
+  static void leave_settings_edit()
+  {
+    switch (timed_pwr.current_setting())
+      {
+      case 0x10:
+        timed_pwr.Acc_delay_diff.write(_edit_time);
+        break;
+      case 0x00:
+        timed_pwr.On_time_diff.write(_edit_time);
+        break;
+      }
+    timed_pwr.leave_settings_edit();
+    static auto const c = Pgm(I2c_master::mk_cmds(
+          Display::mk_clr(4 + img_settings::w + 2, 0, img_s::w, img_s::h / 8, 0),
+          I2c_master::End(i2c_finish_cmds)));
+
+    i2c_start_cmds(&c);
+  }
+
+  static void setings_delay()
+  {
+    static auto const c = Pgm(I2c_master::mk_cmds(
+          Display::mk_blit<img_delay>(4, 2),
+          I2c_master::End(i2c_finish_cmds)));
+
+    i2c_start_cmds(&c);
+    _edit_time = timed_pwr.Acc_delay_diff;
+    show_time(cxx::duration_cast<cxx::seconds16>(_edit_time));
+  }
+
+  static void settings_pwr_off()
+  {
+    static auto const c = Pgm(I2c_master::mk_cmds(
+          Display::mk_blit<img_off>(4, 2),
+          Display::mk_clr(4 + img_off::w, 2, img_delay::w - img_off::w, img_off::h / 8, 0),
+          I2c_master::End(i2c_finish_cmds)));
+
+    i2c_start_cmds(&c);
+    _edit_time = timed_pwr.On_time_diff;
+    show_time(cxx::duration_cast<cxx::seconds16>(_edit_time));
+
+  }
+
+  static void handle_settings(cxx::Timer::Time_type const &, int8_t key)
+  {
+    switch (key)
+      {
+      case 0:
+      default:
+        break;
+      case 1: // short press / click
+        if (!timed_pwr.in_settings_edit())
+          {
+            switch (timed_pwr.next_setting())
+              {
+              case 0x10:
+                setings_delay();
+                break;
+
+              case 0x00:
+                settings_pwr_off();
+                break;
+              }
+          }
+        else
+          {
+            switch (timed_pwr.current_setting())
+              {
+              case 0x10:
+                _edit_time = _edit_time + cxx::seconds16(5);
+                if (_edit_time > Etime(cxx::seconds8(30)))
+                  _edit_time = cxx::seconds(0);
+                show_time(cxx::duration_cast<cxx::seconds16>(_edit_time));
+                break;
+
+              case 0x00:
+                _edit_time = _edit_time + cxx::minutes8(10);
+                if (_edit_time > Etime(cxx::minutes8(60)))
+                  _edit_time = cxx::seconds(0);
+                show_time(cxx::duration_cast<cxx::seconds16>(_edit_time));
+                break;
+              }
+          }
+        //timed_pwr.power_btn(acc_in, cxx::duration_cast<Tmr::Cnt_type>(now));
+        break;
+      case 2: // long press / click
+        leave_settings();
+        break;
+      case 3: // double click
+        if (!timed_pwr.in_settings_edit())
+          enter_settings_edit();
+        else
+          leave_settings_edit();
+      }
+  }
 };
 
+decltype(timed_pwr)::Cnt_type Display_task::_edit_time;
 I2c_master::Start_ptr Display_task::i2c_queue;
+#endif
+
+//---------------------------------------------------------
+// power button handling
+class Pwr_btn : public Io_pin_task<Pwr_btn, pwr_btn>
+{
+public:
+  using update_time_type = cxx::Timer::Time_type; //< needed for task loop
+  void on_update(update_time_type const &now, int8_t key)
+  {
+#if USE_I2C
+    if (timed_pwr.in_settings())
+      {
+        Display_task::handle_settings(now, key);
+        return;
+      }
+#endif
+
+    switch (key)
+      {
+      case 0:
+      default:
+        break;
+      case 1: // short press / click
+        timed_pwr.power_btn(acc_in, cxx::duration_cast<Tmr::Cnt_type>(now));
+        break;
+      case 2: // long press / click
+        if (timed_pwr.is_ticking())
+          timed_pwr.long_btn_press(cxx::duration_cast<Tmr::Cnt_type>(now));
+#if USE_I2C
+        else
+          Display_task::enter_settings();
+#endif
+        break;
+      }
+  }
+
+};
+
+
+//---------------------------------------------------------
+#if USE_I2C
 
 using Tasks = Task_list<Acc_in, Pwr_btn, Tmr &, Pin_changed_task &, Display_task>;
 
