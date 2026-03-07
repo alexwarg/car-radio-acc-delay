@@ -182,7 +182,7 @@ private:
   constexpr T *_addr() const noexcept { return reinterpret_cast<T *>(_ptr & ~0x8000); }
 
   template<typename IDX>
-  constexpr T _get(IDX &&idx) const noexcept
+  constexpr std::remove_extent_t<T> _get(IDX &&idx) const noexcept
   {
     return is_pgm() ? *Pgm_ptr<T>(_addr() + idx) : *(_addr() + idx);
   }
@@ -207,13 +207,13 @@ public:
 
   constexpr bool is_pgm() const noexcept { return _ptr & 0x8000; }
 
-  constexpr T get() const noexcept
+  constexpr std::remove_extent_t<T> get() const noexcept
   { return _get(0); }
 
-  constexpr T operator * () const noexcept { return _get(0); }
+  constexpr std::remove_extent_t<T> operator * () const noexcept { return _get(0); }
 
   template<typename IDX>
-  constexpr T operator [] (IDX index) const noexcept { return _get(index); }
+  constexpr std::remove_extent_t<T> operator [] (IDX index) const noexcept { return _get(index); }
 
   constexpr Gen_ptr &operator ++ () noexcept [[always_inline]]
   {
