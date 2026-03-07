@@ -37,6 +37,7 @@ struct I2c_master
     C_send_bytes,
     C_send_bytes_inline,
     C_send_bytes_rep,
+    C_send_bytes_rep_len,
     C_send_bytes_ram_len,
   };
 
@@ -53,6 +54,12 @@ struct I2c_master
   {
     Gen_ptr<void const> addr;
     uint8_t len;
+  } __attribute__((packed));
+
+  struct Repeat_byte_data
+  {
+    uint8_t len;
+    uint8_t byte;
   } __attribute__((packed));
 
   static I2c_master m;
@@ -277,6 +284,17 @@ private:
           }
         return;
 
+      case C_send_bytes_rep_len:
+        m.cmd += sizeof(Repeat_byte_data const *);
+        if (!m.len)
+          {
+            auto s = gen_ptr_recast<Repeat_byte_data const *>(m.cmd)[-1];
+            m.buf_byte = s->byte;
+            m.len = s->len;
+            m._send_byte<[]() { return m.buf_byte; }>();
+          }
+        return;
+
       case C_send_bytes_ram_len:
         m.cmd += sizeof(Send_buffer_data const *);
         if (!m.len)
@@ -371,6 +389,18 @@ public:
   send_bytes_rep(uint8_t bytes) noexcept
   {
     return { C_send_bytes_rep, N, bytes };
+  }
+
+  static constexpr Array<uint8_t, 3>
+  send_bytes_rep(uint8_t byte, uint8_t len) noexcept
+  {
+    return { C_send_bytes_rep, len, byte };
+  }
+
+  static constexpr auto
+  send_bytes_rep_len(Repeat_byte_data const *p) noexcept
+  {
+    return mk_cmds((uint8_t)C_send_bytes_rep_len, (Repeat_byte_data const *)p);
   }
 
   static void init()

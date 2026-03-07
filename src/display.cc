@@ -23,7 +23,7 @@ Display::init()
     // clear screen
     I2c_master::C_start,
     I2c_master::send_bytes(0x78, 0x00,
-      0x20, 0x01, 0x21, 0x00, 0x7f, 0x22, 0x00, 0x03),
+      0x20, 0x00, 0x21, 0x00, 0x7f, 0x22, 0x00, 0x03),
     I2c_master::C_stop,
     I2c_master::C_start,
     I2c_master::send_bytes(0x78, 0x40),
@@ -41,4 +41,7 @@ Display::init()
   ));
   I2c_master::m.start_cmds(&_init);
 }
+
+
+Display::Disp_time::State Display::Disp_time::state;
 
