@@ -173,10 +173,10 @@ template<typename T>
 class Gen_ptr
 {
 private:
-  intptr_t _ptr;
+  uintptr_t _ptr;
 
-  explicit constexpr Gen_ptr(T *p) noexcept : _ptr(reinterpret_cast<intptr_t>(p)) {}
-  explicit constexpr Gen_ptr(T *p, bool) noexcept : _ptr(reinterpret_cast<intptr_t>(p) | 0x8000) {}
+  explicit constexpr Gen_ptr(T *p) noexcept : _ptr(reinterpret_cast<uintptr_t>(p)) {}
+  explicit constexpr Gen_ptr(T *p, bool) noexcept : _ptr(reinterpret_cast<uintptr_t>(p) + 0x8000) {}
   explicit constexpr Gen_ptr(intptr_t p) noexcept : _ptr(p) {}
 
   constexpr T *_addr() const noexcept { return reinterpret_cast<T *>(_ptr & ~0x8000); }
