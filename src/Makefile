@@ -36,10 +36,11 @@ OLED_HEADERS := $(patsubst %, img_%.h, $(subst -,_,$(OLED_IMGS)))
 all: $(TARGET) $(OLED_HEADERS)
 
 clean:
-	$(RM) $(OBJECTS) $(TARGET)
+	$(RM) $(OBJECTS) $(TARGET) $(TARGET:.hex=.eep)
 
-upload: $(TARGET)
-	$(AVRDUDE) $(AVRDUDE_CFG) -P /dev/ttyUSB0 -p $(BOARD_MCU) -c buspirate -U flash:w:$(TARGET):i
+upload: $(TARGET) $(TARGET:.hex=.eep)
+	$(AVRDUDE) $(AVRDUDE_CFG) -P /dev/ttyUSB0 -p $(BOARD_MCU) -c buspirate -U flash:w:$(TARGET):i  -U eeprom:w:$(TARGET:.hex=.eep):i
+
 
 uploadeep: $(TARGET:.hex=.eep)
 	$(AVRDUDE) $(AVRDUDE_CFG) -P /dev/ttyUSB0 -p $(BOARD_MCU) -c buspirate -U eeprom:w:$<:i
@@ -57,6 +58,9 @@ endif
 
 $(OLED_HEADERS): img_%.h: assets/$(subst _,-,%).tiff
 	$(GEN_IMG) $< $@ img_$(*F)
+
+#font generation
+# python ~/Downloads/ttf2bmh.py -s 24 -fh 24 -f . --progmem -p -O 0 --vertical --variable_width
 
 $(TARGET:.hex=.elf): $(OBJECTS)
 	$(AVRCXX) $(CFLAGS) -o $@ $(CXXFLAGS) -Wl,--gc-sections -fuse-linker-plugin $^

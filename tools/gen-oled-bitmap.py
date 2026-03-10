@@ -15,17 +15,25 @@ def image_to_ssd1306_bytes(img):
     pages = height // 8
     data = []
 
-    for page in range(pages):
+    def pixbyte(x, page):
+        byte = 0
+        for bit in range(8):
+            y = page * 8 + bit
+            pixel = pixels[x, y]
+
+            if pixel == 0:   # black pixel -> set bit
+                byte |= (1 << bit)
+
+        return byte;
+
+    if True:
         for x in range(width):
-            byte = 0
-            for bit in range(8):
-                y = page * 8 + bit
-                pixel = pixels[x, y]
-
-                if pixel == 0:   # black pixel -> set bit
-                    byte |= (1 << bit)
-
-            data.append(byte)
+            for page in range(pages):
+                data.append(pixbyte(x, page))
+    else:
+        for page in range(pages):
+            for x in range(width):
+                data.append(pixbyte(x, page))
 
     return data
 
