@@ -3,7 +3,8 @@
 #pragma once
 
 #include "i2c.h"
-#include "Roboto_Condensed_24.h"
+//#include "Roboto_Condensed_24.h"
+#include "7seg_font.h"
 #include <utility>
 
 class Display
@@ -127,17 +128,22 @@ public:
 
     static State state;
 
-    static void set_viewport(uint8_t)
+    static uint8_t get_idx()
     {
       if (state.pos < 2)
-        state.ri.idx = (state.ctim >> (12 - (state.pos * 4))) & 0x0f;
+        return (state.ctim >> (12 - (state.pos * 4))) & 0x0f;
       else if (state.pos == 2)
-        state.ri.idx = 10;
+        return 10;
       else
-        state.ri.idx = (state.ctim >> (12 - ((state.pos - 1) * 4))) & 0x0f;
+        return (state.ctim >> (12 - ((state.pos - 1) * 4))) & 0x0f;
+    }
 
+    static void set_viewport(uint8_t)
+    {
+      state.ri.idx = get_idx();
       state.ri.v.s = state.xpos;
-      state.ri.v.e = state.xpos + pgm_read_byte(&char_desc[state.ri.idx].width) - 1;
+      //state.ri.v.e = state.xpos + pgm_read_byte(&char_desc[state.ri.idx].width) - 1;
+      state.ri.v.e = state.xpos + pgm_read_byte(&char_width[state.ri.idx]) - 1;
       state.xpos = state.ri.v.e + 1;
     }
 
@@ -160,6 +166,19 @@ public:
       else
         state.rb.len = 6;
 
+      state.rb.byte = 0;
+    }
+
+    static void pre_clr(uint8_t)
+    {
+      state.rb.len = pgm_read_byte(&char_xoff[state.ri.idx]) * 3;
+      state.rb.byte = 0;
+    }
+
+    static void post_clr(uint8_t)
+    {
+      auto x =  get_idx();
+      state.rb.len = (pgm_read_byte(&char_width[x]) - pgm_read_byte(&char_xoff[x]) - pgm_read_byte(&char_desc[x].width)) * 3;
       state.rb.byte = 0;
     }
 
@@ -186,12 +205,16 @@ public:
         I2c_master::Send_bytes(Display::Disp_time::state.ri.v),
         I2c_master::send_bytes(0x22, 0x01, 0x03),
         I2c_master::C_stop,
-        I2c_master::Cb(Display::Disp_time::draw_char_cb),
+        I2c_master::Cb(Display::Disp_time::pre_clr),
         I2c_master::C_start,
         I2c_master::send_bytes(0x78, 0x40),
+        I2c_master::send_bytes_rep_len(&Display::Disp_time::state.rb),
+        I2c_master::Cb(Display::Disp_time::draw_char_cb),
         I2c_master::Send_buffer(&Display::Disp_time::state.c),
+        I2c_master::Cb(Display::Disp_time::post_clr),
+        I2c_master::send_bytes_rep_len(&Display::Disp_time::state.rb),
         I2c_master::C_stop,
-
+#if 0
         I2c_master::Cb(Display::Disp_time::set_viewportclr_2),
         I2c_master::C_start,
         I2c_master::send_bytes(0x78, 0x00, 0x21),
@@ -202,7 +225,7 @@ public:
         I2c_master::send_bytes(0x78, 0x40),
         I2c_master::send_bytes_rep_len(&Display::Disp_time::state.rb),
         I2c_master::C_stop,
-
+#endif
         I2c_master::End(Display::Disp_time_t<finished>::_disp_time_end)));
       return r;
     }

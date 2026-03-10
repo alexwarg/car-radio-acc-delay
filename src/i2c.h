@@ -221,7 +221,9 @@ private:
   {
     static auto next_buf_byte = []() { return *(m.buf++); };
 
-    switch (*m.cmd++) {
+    //while (auto cmd = *m.cmd++) switch (cmd)
+    switch (*m.cmd++)
+      {
       case C_end:
         m.resume = nullptr;
           {
@@ -289,6 +291,12 @@ private:
         if (!m.len)
           {
             auto s = gen_ptr_recast<Repeat_byte_data const *>(m.cmd)[-1];
+            if (!s->len)
+              {
+                m.resume = _next_cmd;
+                return;
+              }
+
             m.buf_byte = s->byte;
             m.len = s->len;
             m._send_byte<[]() { return m.buf_byte; }>();
