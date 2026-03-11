@@ -3,8 +3,8 @@
 #pragma once
 
 #include "i2c.h"
-//#include "Roboto_Condensed_24.h"
-#include "7seg_font.h"
+#include "fonts/Roboto_Condensed_24.h"
+#include "fonts/DSEG7_Modern-Italic_24.h"
 #include <utility>
 
 class Display
@@ -128,6 +128,9 @@ public:
 
     static State state;
 
+    using Fnt = Fnt_dseg7_modern_italic_24;
+    //using Fnt = Fnt_roboto_condensed_24;
+
     static uint8_t get_idx()
     {
       if (state.pos < 2)
@@ -142,8 +145,7 @@ public:
     {
       state.ri.idx = get_idx();
       state.ri.v.s = state.xpos;
-      //state.ri.v.e = state.xpos + pgm_read_byte(&char_desc[state.ri.idx].width) - 1;
-      state.ri.v.e = state.xpos + pgm_read_byte(&char_width[state.ri.idx]) - 1;
+      state.ri.v.e = state.xpos + Fnt::width[state.ri.idx] - 1;
       state.xpos = state.ri.v.e + 1;
     }
 
@@ -171,23 +173,22 @@ public:
 
     static void pre_clr(uint8_t)
     {
-      state.rb.len = pgm_read_byte(&char_xoff[state.ri.idx]) * 3;
+      state.rb.len = Fnt::xoff[state.ri.idx] * 3;
       state.rb.byte = 0;
     }
 
     static void post_clr(uint8_t)
     {
-      auto x =  get_idx();
-      state.rb.len = (pgm_read_byte(&char_width[x]) - pgm_read_byte(&char_xoff[x]) - pgm_read_byte(&char_desc[x].width)) * 3;
+      auto const idx = get_idx();
+      state.rb.len = (Fnt::width[idx] - Fnt::xoff[idx] - Fnt::cwidth[idx]) * 3;
       state.rb.byte = 0;
     }
 
     static void draw_char_cb(uint8_t)
     {
       uint8_t idx = state.ri.idx;
-      state.c.addr = pgm_ptr(pgm_read_ptr(&char_desc[idx].addr));
-      state.c.len = pgm_read_byte(&char_desc[idx].width);
-      state.c.len *= 3;
+      state.c.addr = Fnt::charsx[idx].read();
+      state.c.len = Fnt::cwidth[idx] * 3;
     }
   };
 

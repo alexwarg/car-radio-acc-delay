@@ -52,7 +52,7 @@ def generate_c_header(data, width, height, var_name):
     #lines.append(f"#define {var_name.upper()}_WIDTH {width}\n")
     #lines.append(f"#define {var_name.upper()}_HEIGHT {height}\n")
 
-    lines.append(f"  static constexpr auto const data = pgm_array<unsigned char>(")
+    lines.append(f"  static constexpr auto const data = Pgm((unsigned char const []){{")
 
     comma = ""
     for i, byte in enumerate(data):
@@ -62,7 +62,7 @@ def generate_c_header(data, width, height, var_name):
         lines.append(f"{comma}0x{byte:02X}")
         comma = ", "
 
-    lines.append("\n  );\n")
+    lines.append("\n  });\n")
     lines.append("\n};\n")
 
     return "".join(lines)

@@ -5,8 +5,8 @@
 struct img_s {
   static constexpr unsigned w = 8;
   static constexpr unsigned h = 16;
-  static constexpr auto const data = pgm_array<unsigned char>(
+  static constexpr auto const data = Pgm((unsigned char const []){
    0x78, 0x18, 0xFC, 0x38, 0xCE, 0x71, 0x86, 0x61, 0x86, 0x61, 0x8E, 0x73, 0x1C, 0x3F, 0x18, 0x1E
-  );
+  });
 
 };

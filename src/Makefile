@@ -7,7 +7,9 @@ AVRDUDE ?= $(AVRDUDE_PREFIX)avrdude
 AVRDUDE_CFG ?= -C $(AVRDUDE_PREFIX)avrdude.conf
 AVRSIZE ?= avr-size
 
-TOOLDIR := $(PWD)/tools
+TOOLDIR := $(SRCROOT)/tools
+ASSETSDIR := $(SRCROOT)/assets
+FONTSDIR := $(ASSETSDIR)/fonts
 
 GEN_IMG := $(TOOLDIR)/gen-oled-bitmap.py
 
@@ -31,7 +33,9 @@ OBJECTS := $(addprefix $(BUILDDIR)/, $(addsuffix .o,$(CCSRC)))
 OLED_HEADERS := $(patsubst %, img_%.h, $(subst -,_,$(OLED_IMGS)))
 
 
-.PHONY: all clean upload
+.PHONY: all clean upload fonts
+
+vpath %.tiff $(ASSETSDIR)
 
 all: $(TARGET) $(OLED_HEADERS)
 
@@ -56,11 +60,19 @@ endif
 %.hex: %.elf
 	$(OBJCOPY) -O ihex -R .eeprom $< $@
 
-$(OLED_HEADERS): img_%.h: assets/$(subst _,-,%).tiff
+$(OLED_HEADERS): img_%.h: $(subst _,-,%).tiff
 	$(GEN_IMG) $< $@ img_$(*F)
 
-#font generation
-# python ~/Downloads/ttf2bmh.py -s 24 -fh 24 -f . --progmem -p -O 0 --vertical --variable_width
+fonts:
+	$(TOOLDIR)/ttf2bmh.py -s 24 -fh 24 -f $(SRCROOT)/assets/fonts -o $(SRCROOT)/src/fonts/ --progmem -O 0 --vertical --variable_width
+
+fonts/%.h: FNT_F=$(subst _, ,$(*F))
+fonts/%.h: SZ=$(lastword $(FNT_F))
+fonts/%.h: FNT=$(wordlist 2,$(words $(FNT_F)),1st $(FNT_F))
+
+fonts/%.h:
+	$(TOOLDIR)/ttf2bmh.py $(addprefix -f ,$(FONTDIR)) -s $(SZ) -fh $(SZ) -o $(SRCROOT)/src/fonts/ --progmem -O 0 --vertical --variable_width --font "$(FNT)"
+
 
 $(TARGET:.hex=.elf): $(OBJECTS)
 	$(AVRCXX) $(CFLAGS) -o $@ $(CXXFLAGS) -Wl,--gc-sections -fuse-linker-plugin $^

@@ -1,23 +1,20 @@
 MKDIR := mkdir -p
 
-SRCROOT = $(PWD)
 BUILD ?= $(SRCROOT)/.build
 
 SUBDIRS := src
 
+export SRCROOT = $(PWD)
+
 .PHONY: all clean $(SUBDIRS)
+
+
+ifneq ($(MAKECMDGOALS),)
+$(MAKECMDGOALS): $(SUBDIRS)
+endif
 
 all: $(SUBDIRS)
 
-uploadeep:
-	@$(MAKE) BUILDDIR=$(BUILD)/src SRCROOT=$(SRCROOT) -C src uploadeep
-
-upload:
-	@$(MAKE) BUILDDIR=$(BUILD)/src SRCROOT=$(SRCROOT) -C src upload
-
-clean:
-	@$(MAKE) BUILDDIR=$(BUILD)/src SRCROOT=$(SRCROOT) -C src clean
-
 $(SUBDIRS):
-	@$(MAKE) BUILDDIR=$(BUILD)/$@  SRCROOT=$(SRCROOT) -C $@
+	@$(MAKE) BUILDDIR=$(BUILD)/$@  -C $@ $(MAKECMDGOALS)
 

@@ -17,6 +17,7 @@
 #include <type_traits>
 
 template<typename T> class Pgm;
+template<typename T> class Pgm_ref;
 
 template<typename T>
 class Pgm_ptr
@@ -66,6 +67,7 @@ private:
 public:
   template<typename O> friend class Pgm_ptr;
   friend class Pgm<T>;
+  friend class Pgm_ref<T>;
 
   constexpr Pgm_ptr() = default;
   constexpr explicit Pgm_ptr(T const *ptr) noexcept : _ptr(ptr) {}
@@ -146,6 +148,25 @@ public:
 };
 
 template<typename T>
+class Pgm_ref
+{
+private:
+  T const &_o;
+
+public:
+  constexpr explicit Pgm_ref(T const &o) : _o(o) {}
+  Pgm_ref(Pgm_ref const &) = default;
+  Pgm_ref(Pgm_ref &&) = default;
+  Pgm_ref &operator = (Pgm_ref const &) = delete;
+  Pgm_ref &operator = (Pgm_ref &&) = delete;
+
+  constexpr Pgm_ptr<T> operator & () const noexcept { return Pgm_ptr<T>(&_o); }
+  constexpr T const *pgm_addr() const noexcept { return &_o; }
+  constexpr T read() const noexcept { return Pgm_ptr<T>::_pgm_read(&_o); }
+  constexpr operator T () const noexcept { return read(); }
+};
+
+template<typename T>
 class Pgm
 {
 private:
@@ -160,11 +181,6 @@ public:
   Pgm &operator = (Pgm &&) = delete;
 
   constexpr Pgm_ptr<T> operator & () const noexcept { return Pgm_ptr<T>(&_o); }
-
-  template<typename INDEX>
-  constexpr Pgm_ptr<std::remove_extent_t<T>> operator [] (INDEX idx) const noexcept
-  { return Pgm_ptr<T>(&_o[idx]); }
-
   constexpr T read() const noexcept { return Pgm_ptr<T>::_pgm_read(&_o); }
   constexpr operator T () const noexcept { return read(); }
 } PROGMEM;
@@ -178,8 +194,7 @@ private:
 public:
 
   constexpr Pgm() = default;
-  template<typename ...E, typename = std::enable_if_t<sizeof...(E) == SIZE>>
-  constexpr Pgm(E &&...t) noexcept : _o(t...) {}
+  constexpr Pgm(T const (&b)[SIZE]) noexcept { for (unsigned i = 0; i < SIZE; ++i) _o[i] = b[i];  }
 
   Pgm(Pgm const &) = delete;
   Pgm(Pgm &&) = delete;
@@ -189,16 +204,10 @@ public:
   constexpr Pgm_ptr<T> operator & () const noexcept { return Pgm_ptr<T>(_o); }
 
   template<typename INDEX>
-  constexpr Pgm_ptr<std::remove_extent_t<T>> operator [] (INDEX idx) const noexcept
-  { return Pgm_ptr<T>(&_o[idx]); }
+  constexpr Pgm_ref<std::remove_extent_t<T>> operator [] (INDEX idx) const noexcept
+  { return Pgm_ref<T>(_o[idx]); }
 } PROGMEM;
 
-
-template<typename E, typename ...T>
-static inline constexpr Pgm<E[sizeof...(T)]> pgm_array(T &&...t) noexcept
-{
-  return Pgm<E[sizeof...(T)]>{t...};
-}
 
 template<typename T>
 class Gen_ptr
