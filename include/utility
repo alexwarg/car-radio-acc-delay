@@ -46,6 +46,40 @@ namespace cxx
   template<typename T>
   constexpr T &&forward(remove_reference_t<T> &&t) noexcept
   { return static_cast<T &&>(t); }
+
+  // ----------------------------------------
+  // integer_sequence
+  template<typename T, T...I>
+  struct integer_sequence
+  {
+    using value_type = T;
+    static constexpr size_t size() { return sizeof...(I); }
+  };
+
+  template<size_t ... I>
+  using index_sequence = integer_sequence<size_t, I...>;
+
+  namespace detail {
+    template<class T, T I, T N, T... integers>
+    struct make_integer_sequence_helper
+    {
+      using type = typename make_integer_sequence_helper<T, I + 1, N, integers..., I>::type;
+    };
+
+    template<class T, T N, T... integers>
+    struct make_integer_sequence_helper<T, N, N, integers...>
+    {
+      using type = cxx::integer_sequence<T, integers...>;
+    };
+  }
+
+  template<class T, T N>
+  using make_integer_sequence = detail::make_integer_sequence_helper<T, 0, N>::type;
+
+  template<size_t N>
+  using make_index_sequence = make_integer_sequence<size_t, N>;
+
+
 }
 
 namespace std { using namespace cxx; }
