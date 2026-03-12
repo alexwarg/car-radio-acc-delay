@@ -15,6 +15,7 @@
 #include <inttypes.h>
 
 #include <type_traits>
+#include <utility>
 
 template<typename T> class Pgm;
 template<typename T> class Pgm_ref;
@@ -170,7 +171,7 @@ template<typename T>
 class Pgm
 {
 private:
-  T _o;
+  T const _o;
 
 public:
   constexpr Pgm() = default;
@@ -189,12 +190,16 @@ template<typename T, unsigned SIZE>
 class Pgm<T[SIZE]>
 {
 private:
-  T _o[SIZE];
+  T const _o[SIZE];
+
+  // helper to unpack a given butilin array at compile time as initializer for _o
+  template<size_t ... Is>
+  constexpr Pgm(std::index_sequence<Is...> const &, T const (&b)[SIZE]) noexcept
+  :_o(b[Is]...) {}
 
 public:
-
   constexpr Pgm() = default;
-  constexpr Pgm(T const (&b)[SIZE]) noexcept { for (unsigned i = 0; i < SIZE; ++i) _o[i] = b[i];  }
+  constexpr Pgm(T const (&b)[SIZE]) noexcept : Pgm(std::make_index_sequence<SIZE>{}, b) {}
 
   Pgm(Pgm const &) = delete;
   Pgm(Pgm &&) = delete;
@@ -207,6 +212,12 @@ public:
   constexpr Pgm_ref<std::remove_extent_t<T>> operator [] (INDEX idx) const noexcept
   { return Pgm_ref<T>(_o[idx]); }
 } PROGMEM;
+
+template<typename T, unsigned SIZE>
+constexpr Pgm<T[SIZE]> to_pgm_array(T const (&b)[SIZE]) noexcept
+{
+  return Pgm<T[SIZE]>(b);
+}
 
 
 template<typename T>
