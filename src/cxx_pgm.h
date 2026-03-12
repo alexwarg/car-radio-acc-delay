@@ -207,9 +207,10 @@ public:
   Pgm &operator = (Pgm &&) = delete;
 
   constexpr Pgm_ptr<T> operator & () const noexcept { return Pgm_ptr<T>(_o); }
+  constexpr operator Pgm_ptr<T> () const noexcept { return Pgm_ptr<T>(_o); }
 
   template<typename INDEX>
-  constexpr Pgm_ref<std::remove_extent_t<T>> operator [] (INDEX idx) const noexcept
+  constexpr Pgm_ref<T> operator [] (INDEX idx) const noexcept
   { return Pgm_ref<T>(_o[idx]); }
 } PROGMEM;
 
@@ -226,7 +227,6 @@ class Gen_ptr
 private:
   uintptr_t _ptr;
 
-  explicit constexpr Gen_ptr(T *p) noexcept : _ptr(reinterpret_cast<uintptr_t>(p)) {}
   explicit constexpr Gen_ptr(T *p, bool) noexcept : _ptr(reinterpret_cast<uintptr_t>(p) + 0x8000) {}
   explicit constexpr Gen_ptr(intptr_t p) noexcept : _ptr(p) {}
 
@@ -244,6 +244,7 @@ public:
 
   constexpr Gen_ptr() = default;
   constexpr Gen_ptr(nullptr_t) noexcept : _ptr(0) {}
+  constexpr Gen_ptr(T *p) noexcept : _ptr(reinterpret_cast<uintptr_t>(p)) {}
   constexpr explicit operator bool () const noexcept { return _ptr != 0; }
   constexpr explicit operator nullptr_t () const noexcept { return reinterpret_cast<nullptr_t>(_ptr); }
 
@@ -252,6 +253,9 @@ public:
 
   template<typename O, typename = std::enable_if_t<std::is_convertible<O*, T*>::value>>
   constexpr Gen_ptr(Pgm_ptr<O> const &o) noexcept : Gen_ptr(o.pgm_addr(), true)  {}
+
+  template<typename O, typename = std::enable_if_t<std::is_convertible<O*, T*>::value>>
+  constexpr Gen_ptr(Pgm_ref<Pgm_ptr<O>> const &o) noexcept : Gen_ptr(o.read())  {}
 
   constexpr static Gen_ptr pgm(T *ptr) noexcept { return Gen_ptr(ptr, true); }
   constexpr static Gen_ptr ram(T *ptr) noexcept { return Gen_ptr(ptr); }
