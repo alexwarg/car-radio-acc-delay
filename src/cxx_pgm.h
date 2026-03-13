@@ -26,9 +26,9 @@ class Pgm_ptr
 private:
   T const *_ptr;
 
-  static T _pgm_read(T const *xaddr) noexcept
+  static T _pgm_read(T const *xaddr) noexcept __attribute__((const))
   {
-    uint8_t const *const addr = reinterpret_cast<uint8_t const *>(xaddr);
+    uint8_t const * addr = reinterpret_cast<uint8_t const *>(xaddr);
     union X
     {
       std::remove_const_t<T> t;
@@ -41,14 +41,40 @@ private:
     switch (sizeof(T))
       {
       case 1:
+#if 1 && defined(__AVR_HAVE_LPMX__)
+        asm ("lpm %0, Z" : "=r"(r.t) : "z"(addr));
+#else
         r.a[0] = pgm_read_byte(addr);
+#endif
         return r.t;
       case 2:
+#if 1 && defined(__AVR_HAVE_LPMX__)
+#if 0
+        asm (
+          "lpm %0, Z+\n\t"
+          "lpm %1, Z"
+          : "=&r"(byte(t, 0)), "=r"(byte(t, 1)), "=z"(addr) : "2"(addr));
+#else
+        asm (
+          "lpm %A0, Z+\n\t"
+          "lpm %B0, Z"
+          : "=&r"(r.t), "=z"(addr) : "1"(addr));
+#endif
+#else
         r.b[0] = pgm_read_word(addr);
+#endif
         return r.t;
       case 3:
+#if 1 && defined(__AVR_HAVE_LPMX__)
+        asm (
+            "lpm %0, Z+\n\t"
+            "lpm %1, Z+\n\t"
+            "lpm %2, Z"
+            : "=&r"(r.a[0]), "=&r"(r.a[1]), "=r"(r.a[2]), "=z"(addr) : "3"(addr));
+#else
         r.b[0] = pgm_read_word(addr);
-        r.b[2] = pgm_read_byte(addr + 2);
+        r.a[2] = pgm_read_byte(addr + 2);
+#endif
         return r.t;
       case 4:
         r.c[0] = pgm_read_dword(addr);
