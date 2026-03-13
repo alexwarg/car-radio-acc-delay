@@ -439,14 +439,23 @@ struct Display_task
 
   static void i2c_start_cmds(I2c_master::Start_ptr p)
   {
+    might_init();
     if (I2c_master::m.busy())
       i2c_queue = p;
     else
       I2c_master::m.start_cmds(p);
   }
 
-  static void i2c_finish_cmds(uint8_t)
+  static void i2c_finish_cmds(uint8_t err, Pgm_ptr<uint8_t const>)
   {
+    if (err)
+      {
+        Display::d._initialized = false;
+        Display::d._on = false;
+        i2c_queue = nullptr;
+        return;
+      }
+
     if (!i2c_queue)
       return;
 
@@ -455,13 +464,27 @@ struct Display_task
     I2c_master::m.start_cmds(tmp);
   }
 
+  static void might_init()
+  {
+    if (!Display::d._initialized)
+      Display::d.init<[](uint8_t e, Pgm_ptr<uint8_t const> p)
+      {
+        if (!e)
+          {
+            Display::d._initialized = true;
+            Display::d._on = 0;
+            i2c_finish_cmds(e, p);
+          }
+      }>();
+  }
+
   static void init(auto &&...)
   {
     I2c_master::m.init();
-    Display::d.init();
+    might_init();
   }
 
-  static void show_time(cxx::seconds16 const &eta)
+  static void show_time(cxx::seconds16 const &eta, bool force)
   {
     auto min = cxx::duration_cast<cxx::minutes8>(eta);
     auto sec = cxx::duration_cast<cxx::seconds8>(eta - min);
@@ -469,7 +492,7 @@ struct Display_task
     uint16_t sec1 = sec.count() - (sec2 * 10);
     uint16_t min2 = min.count() / 10;
     uint16_t min1 = min.count() - (min2 * 10);
-    Display::d.time<i2c_finish_cmds>(sec1 | (sec2 << 4) | (min1 << 8) | (min2 << 12), i2c_start_cmds);
+    Display::d.time<i2c_finish_cmds>(sec1 | (sec2 << 4) | (min1 << 8) | (min2 << 12), force, i2c_start_cmds);
   }
 
   static void update(auto const &now, auto &&)
@@ -480,7 +503,7 @@ struct Display_task
       {
         Display::d._on = 1;
         // assume eta is (far) less than 4h == 240 * 60 seconds (16bit is big enough)
-        show_time(cxx::duration_cast<cxx::seconds16>(timed_pwr.eta(cxx::duration_cast<Tmr::Cnt_type>(now))));
+        show_time(cxx::duration_cast<cxx::seconds16>(timed_pwr.eta(cxx::duration_cast<Tmr::Cnt_type>(now))), false);
       }
     else if(!(timed_pwr.is_ticking() || timed_pwr.in_settings()) && Display::d._on)
       {
@@ -514,7 +537,7 @@ struct Display_task
 
     i2c_start_cmds(&c);
     _edit_time = timed_pwr.On_time_diff;
-    show_time(cxx::duration_cast<cxx::seconds16>(_edit_time));
+    show_time(cxx::duration_cast<cxx::seconds16>(_edit_time), true);
   }
 
   static void leave_settings()
@@ -564,7 +587,7 @@ struct Display_task
 
     i2c_start_cmds(&c);
     _edit_time = timed_pwr.Acc_delay_diff;
-    show_time(cxx::duration_cast<cxx::seconds16>(_edit_time));
+    show_time(cxx::duration_cast<cxx::seconds16>(_edit_time), true);
   }
 
   static void settings_pwr_off()
@@ -576,7 +599,7 @@ struct Display_task
 
     i2c_start_cmds(&c);
     _edit_time = timed_pwr.On_time_diff;
-    show_time(cxx::duration_cast<cxx::seconds16>(_edit_time));
+    show_time(cxx::duration_cast<cxx::seconds16>(_edit_time), true);
 
   }
 
@@ -609,14 +632,14 @@ struct Display_task
                 _edit_time = _edit_time + cxx::seconds16(5);
                 if (_edit_time > Etime(cxx::seconds8(30)))
                   _edit_time = cxx::seconds(0);
-                show_time(cxx::duration_cast<cxx::seconds16>(_edit_time));
+                show_time(cxx::duration_cast<cxx::seconds16>(_edit_time), true);
                 break;
 
               case 0x00:
                 _edit_time = _edit_time + cxx::minutes8(10);
                 if (_edit_time > Etime(cxx::minutes8(60)))
                   _edit_time = cxx::seconds(0);
-                show_time(cxx::duration_cast<cxx::seconds16>(_edit_time));
+                show_time(cxx::duration_cast<cxx::seconds16>(_edit_time), true);
                 break;
               }
           }

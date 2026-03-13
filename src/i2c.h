@@ -47,13 +47,22 @@ struct I2c_master
     M_SDA = 1 << SDA_BIT,
   };
 
-  typedef void (*Finalizer)(uint8_t err);
+  typedef void (*Finalizer)(uint8_t err, Pgm_ptr<uint8_t const>);
   using Start_ptr = Pgm_ptr<void const>;
 
   struct Send_buffer_data
   {
     Gen_ptr<void const> addr;
     uint8_t len;
+  } __attribute__((packed));
+
+  struct Send_bytes_data
+  {
+    uint8_t len;
+    Gen_ptr<void const> addr;
+    Send_bytes_data() = default;
+    constexpr Send_bytes_data(uint8_t len, Gen_ptr<void const> addr) noexcept
+    : len(len), addr(addr) {}
   } __attribute__((packed));
 
   struct Repeat_byte_data
@@ -103,13 +112,21 @@ private:
   void _stop()
   {
     if (_scl())
-      return _resume_next();
+      {
+        USIDR = 0xff;
+        _sda_in(); _sda_l(); // results in SDA = released high Z
+        return _resume_next();
+      }
 
     _sda_l(); _sda_out();
     _scl_h();
     resume = []() {
-      if (!m._scl())
-        return;
+      if (!m._wait_scl())
+        {
+          USIDR = 0xff;
+          _sda_in(); _sda_l(); // results in SDA = released high Z
+          return m._resume_err(8);
+        }
 
       m.resume = []() {
         USIDR = 0xff;
@@ -128,8 +145,13 @@ private:
 
     resume = []() {
       if (!m._scl())
-        return;
+        {
+          if (++m.len >= 200)
+            return m._resume_next();
+          return;
+        }
 
+      m.len = 0;
       m._sda_out(); // LOW
       //m.resume = []() {
         m.resume = []() {
@@ -181,11 +203,10 @@ private:
   }
 
   template<uint8_t (get_dr)()>
-  static uint8_t _send_byte()
+  static void _send_byte()
   {
     USISR = 0b11110000;
     USIDR = get_dr();
-    m.len--;
     m._usitc();
     m.resume = _send_bits_loop<false, [](){
       USISR = 0b11111110;
@@ -196,17 +217,13 @@ private:
         uint8_t nack = USIDR;
         m._sda_out();
         if (nack & 1)
-          {
-            m.len = 1;
-            m._stop();
-          }
-        else if (m.len)
+          m._stop();
+        else if (--m.len)
           _send_byte<get_dr>();
         else
           _next_cmd();
       }>();
     }>;
-    return 1;
   }
 
   template<uint8_t (F)()> inline
@@ -222,25 +239,17 @@ private:
     static auto next_buf_byte = []() { return *(m.buf++); };
 
     //while (auto cmd = *m.cmd++) switch (cmd)
-    switch (*m.cmd++)
+    switch (auto c = *m.cmd++)
       {
       case C_end:
-        m.resume = nullptr;
+      case C_callback:
+        m.resume = (c == C_end) ? nullptr : _next_cmd;
           {
             Finalizer h = gen_ptr_recast<Finalizer const>(m.cmd)[0];
-            m.cmd = nullptr;
-            if (h)
-              h(m.len);
-          }
-        return;
-
-      case C_callback:
-        m.resume = _next_cmd;
-        m.cmd += sizeof(void*);
-          {
-            Finalizer h = gen_ptr_recast<Finalizer const>(m.cmd)[-1];
-            if (h)
-              h(m.len);
+            auto current_cmd = m.cmd;
+            m.cmd =  (c == C_end) ? nullptr : (m.cmd + sizeof(void*));
+            //if (h)
+              h(m.len, current_cmd - 1);
           }
         return;
 
@@ -250,18 +259,17 @@ private:
         return;
 
       case C_stop:
-        if (!m.len)
+        //if (!m.len)
           m._stop();
         return;
 
       case C_send_bytes:
-        m.cmd += 1 + sizeof(Gen_ptr<uint8_t const>);
-        if (m.len)
-          return;
-
-        m._send_bytes_x<next_buf_byte>(
-            gen_ptr_recast<Gen_ptr<uint8_t const>>(m.cmd)[-1],
-            m.cmd[-1 - sizeof(Gen_ptr<uint8_t const>)]);
+        m.cmd += sizeof(Send_bytes_data);
+        if (!m.len)
+          {
+            auto d = gen_ptr_recast<Send_bytes_data const>(m.cmd)[-1];
+            m._send_bytes_x<next_buf_byte>(d.addr, d.len);
+          }
         return;
 
       case C_send_bytes_inline:
@@ -316,34 +324,38 @@ private:
   }
 
 public:
-  struct End
+  struct Call
   {
     uint8_t cmd;
     Finalizer f;
-    explicit constexpr End(Finalizer f) : cmd(C_end), f(f) {}
+    explicit constexpr Call(uint8_t cmd, Finalizer f) : cmd(cmd), f(f) {}
+  } __attribute__((packed));
+
+  struct End
+  {
+    Call _c;
+    explicit constexpr End(Finalizer f) : _c(C_end, f) {}
   } __attribute__((packed));
 
   struct Cb
   {
-    uint8_t cmd;
-    Finalizer f;
-    explicit constexpr Cb(Finalizer f) : cmd(C_callback), f(f) {}
+    Call _c;
+    explicit constexpr Cb(Finalizer f) : _c(C_callback, f) {}
   } __attribute__((packed));
 
   struct Send_bytes
   {
     uint8_t cmd;
-    uint8_t len;
-    Gen_ptr<void const> buf;
+    Send_bytes_data d;
 
     template<typename T>
       constexpr Send_bytes(T const &b) noexcept
-      : cmd(C_send_bytes), len(sizeof(b)), buf(ram_ptr(&b))
+      : cmd(C_send_bytes), d(sizeof(b), ram_ptr(&b))
         {}
 
     template<typename T>
       constexpr Send_bytes(Pgm<T> const &b) noexcept
-      : cmd(C_send_bytes), len(sizeof(b)), buf(&b)
+      : cmd(C_send_bytes), d(sizeof(b), &b)
         {}
   } __attribute__((packed));
 
@@ -432,6 +444,24 @@ public:
     len = 0;
     cmd = gen_ptr_cast<uint8_t const>(cmds);
     resume = _next_cmd;
+  }
+
+  template<auto condition, auto finish, unsigned SIZE>
+  static void _loop_cbf(uint8_t e, Pgm_ptr<uint8_t const> current)
+  {
+    if (!e && condition())
+      m.start_cmds(current - SIZE);
+    else
+      finish(e, current);
+  }
+
+  template<auto condition,
+           auto finish = [](uint8_t, Pgm_ptr<uint8_t const>){},
+           typename CODE = void>
+  static constexpr auto do_while_end(CODE &&code)
+  -> decltype(mk_cmds(std::forward<CODE>(code), End(finish)))
+  {
+    return mk_cmds(std::forward<CODE>(code), End(_loop_cbf<condition, finish, sizeof(CODE)>));
   }
 
   void step()

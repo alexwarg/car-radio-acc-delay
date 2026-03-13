@@ -12,15 +12,44 @@ class Display
 public:
   uint8_t _initialized:1;
   uint8_t _on:1;
-  void init();
 
-  template<I2c_master::Finalizer finished = nullptr,
+  template<auto finish>
+  void init()
+  {
+    static auto const _init = Pgm(I2c_master::mk_cmds(
+      // init seq
+      I2c_master::C_start,
+      I2c_master::send_bytes(
+        0x78, 0x00, 0xae, 0xd5, 0x80, 0xa8, 0x1f,
+        0xd3, 0x00, 0x40, 0x8d, 0x14,
+        0x20, 0x00, 0xa1, 0xc8,
+        0xda, 0x02, 0x81, 0x8f,
+        0xd9, 0xf1,
+        0xdb, 0x40, 0xa4, 0xa6, 0x2e),
+      I2c_master::C_stop,
+
+      // clear screen
+      I2c_master::C_start,
+      I2c_master::send_bytes(0x78, 0x00,
+        0x20, 0x01, 0x21, 0x00, 0x7f, 0x22, 0x00, 0x03),
+      I2c_master::C_stop,
+      I2c_master::C_start,
+      I2c_master::send_bytes(0x78, 0x40),
+      I2c_master::send_bytes_rep<0>(0x0),
+      I2c_master::send_bytes_rep<0>(0x0),
+      I2c_master::C_stop,
+
+      // done
+      I2c_master::End(finish)
+    ));
+    I2c_master::m.start_cmds(&_init);
+  }
+
+
+  template<I2c_master::Finalizer finished,
     typename STARTER = void (*)(I2c_master::Start_ptr)>
   void on(STARTER &&starter = [](I2c_master::Start_ptr c) { I2c_master::m.start_cmds(c); })
   {
-    if (!_initialized)
-      return;
-
     static auto const c = Pgm(I2c_master::mk_cmds(
       I2c_master::C_start,
       I2c_master::send_bytes(0x78, 0x00, 0xaf),
@@ -30,13 +59,10 @@ public:
     starter(&c);
   }
 
-  template<I2c_master::Finalizer finished = nullptr,
+  template<I2c_master::Finalizer finished,
     typename STARTER = void (*)(I2c_master::Start_ptr)>
   void off(STARTER &&starter = [](I2c_master::Start_ptr c) { I2c_master::m.start_cmds(c); })
   {
-    if (!_initialized)
-      return;
-
     static auto const c = Pgm(I2c_master::mk_cmds(
       I2c_master::C_start,
       I2c_master::send_bytes(0x78, 0x00, 0xae),
@@ -46,13 +72,10 @@ public:
     starter(&c);
   }
 
-  template<I2c_master::Finalizer finished = nullptr,
+  template<I2c_master::Finalizer finished,
     typename STARTER = void (*)(I2c_master::Start_ptr)>
   void clr(STARTER &&starter = [](I2c_master::Start_ptr c) { I2c_master::m.start_cmds(c); })
   {
-    if (!_initialized)
-      return;
-
     static auto const c = Pgm(I2c_master::mk_cmds(
       I2c_master::C_start,
       I2c_master::send_bytes(0x78, 0x00,
@@ -141,7 +164,7 @@ public:
         return (state.ctim >> (12 - ((state.pos - 1) * 4))) & 0x0f;
     }
 
-    static void set_viewport(uint8_t)
+    static void set_viewport(uint8_t, auto)
     {
       state.ri.idx = get_idx();
       state.ri.v.s = state.xpos;
@@ -171,95 +194,65 @@ public:
       state.rb.byte = 0;
     }
 
-    static void pre_clr(uint8_t)
+    static void pre_clr(uint8_t, auto)
     {
       state.rb.len = Fnt::xoff[state.ri.idx] * 3;
       state.rb.byte = 0;
     }
 
-    static void post_clr(uint8_t)
+    static void post_clr(uint8_t, auto)
     {
       auto const idx = get_idx();
       state.rb.len = (Fnt::width[idx] - Fnt::xoff[idx] - Fnt::cwidth[idx]) * 3;
       state.rb.byte = 0;
     }
 
-    static void draw_char_cb(uint8_t)
+    static void draw_char_cb(uint8_t, auto)
     {
       uint8_t idx = state.ri.idx;
-      state.c.addr = Fnt::charsx[idx].read();
+      state.c.addr = Fnt::charsx[idx];
       state.c.len = Fnt::cwidth[idx] * 3;
     }
   };
 
-  template<I2c_master::Finalizer finished>
-  struct Disp_time_t
-  {
-    static void _disp_time_end(uint8_t e);
-
-    static auto const &get_cmd()
-    {
-      static auto const r = Pgm(I2c_master::mk_cmds(
-        I2c_master::Cb(Display::Disp_time::set_viewport),
-        I2c_master::C_start,
-        I2c_master::send_bytes(0x78, 0x00, 0xaf, 0x21),
-        I2c_master::Send_bytes(Display::Disp_time::state.ri.v),
-        I2c_master::send_bytes(0x22, 0x01, 0x03),
-        I2c_master::C_stop,
-        I2c_master::Cb(Display::Disp_time::pre_clr),
-        I2c_master::C_start,
-        I2c_master::send_bytes(0x78, 0x40),
-        I2c_master::send_bytes_rep_len(&Display::Disp_time::state.rb),
-        I2c_master::Cb(Display::Disp_time::draw_char_cb),
-        I2c_master::Send_buffer(&Display::Disp_time::state.c),
-        I2c_master::Cb(Display::Disp_time::post_clr),
-        I2c_master::send_bytes_rep_len(&Display::Disp_time::state.rb),
-        I2c_master::C_stop,
-#if 0
-        I2c_master::Cb(Display::Disp_time::set_viewportclr_2),
-        I2c_master::C_start,
-        I2c_master::send_bytes(0x78, 0x00, 0x21),
-        I2c_master::Send_bytes(Display::Disp_time::state.ri.v),
-        I2c_master::C_stop,
-        I2c_master::Cb(Display::Disp_time::clr_cb),
-        I2c_master::C_start,
-        I2c_master::send_bytes(0x78, 0x40),
-        I2c_master::send_bytes_rep_len(&Display::Disp_time::state.rb),
-        I2c_master::C_stop,
-#endif
-        I2c_master::End(Display::Disp_time_t<finished>::_disp_time_end)));
-      return r;
-    }
-  };
-
-  template<I2c_master::Finalizer finished = nullptr,
+  template<I2c_master::Finalizer finished,
     typename STARTER = void (*)(I2c_master::Start_ptr)>
-  void time(uint16_t t, STARTER &&starter = [](I2c_master::Start_ptr c) { I2c_master::m.start_cmds(c); })
+  void time(uint16_t t, bool force,
+            STARTER &&starter = [](I2c_master::Start_ptr c) { I2c_master::m.start_cmds(c); })
   {
-    if (!_initialized)
-      return;
-
-    if (t == Disp_time::state.ctim)
+    if (!force && t == Disp_time::state.ctim)
       return;
 
     Disp_time::state.ctim = t;
     Disp_time::state.xpos = 40;
     Disp_time::state.pos = 0;
 
-    starter(&Disp_time_t<finished>::get_cmd());
+    static auto const r = Pgm(
+      I2c_master::do_while_end<
+        [](){return Display::Disp_time::state.pos++ < 4;}, finished>(
+        I2c_master::mk_cmds(
+          I2c_master::Cb(Display::Disp_time::set_viewport),
+          I2c_master::C_start,
+          I2c_master::send_bytes(0x78, 0x00, 0xaf, 0x21),
+          I2c_master::Send_bytes(Display::Disp_time::state.ri.v),
+          I2c_master::send_bytes(0x22, 0x01, 0x03),
+          I2c_master::C_stop,
+          I2c_master::Cb(Display::Disp_time::pre_clr),
+          I2c_master::C_start,
+          I2c_master::send_bytes(0x78, 0x40),
+          I2c_master::send_bytes_rep_len(&Display::Disp_time::state.rb),
+          I2c_master::Cb(Display::Disp_time::draw_char_cb),
+          I2c_master::Send_buffer(&Display::Disp_time::state.c),
+          I2c_master::Cb(Display::Disp_time::post_clr),
+          I2c_master::send_bytes_rep_len(&Display::Disp_time::state.rb),
+          I2c_master::C_stop
+        )
+      )
+    );
+
+    starter(&r);
   }
 
   static Display d;
 };
-
-template<I2c_master::Finalizer finished>
-void Display::Disp_time_t<finished>::_disp_time_end(uint8_t e)
-{
-  if (!e && (Display::Disp_time::state.pos++ < 4))
-    {
-      I2c_master::m.start_cmds(&get_cmd());
-      return;
-    }
-  finished(e);
-}
 
