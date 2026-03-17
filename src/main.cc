@@ -486,13 +486,7 @@ struct Display_task
 
   static void show_time(cxx::seconds16 const &eta, bool force)
   {
-    auto min = cxx::duration_cast<cxx::minutes8>(eta);
-    auto sec = cxx::duration_cast<cxx::seconds8>(eta - min);
-    uint16_t sec2 = sec.count() / 10;
-    uint16_t sec1 = sec.count() - (sec2 * 10);
-    uint16_t min2 = min.count() / 10;
-    uint16_t min1 = min.count() - (min2 * 10);
-    Display::d.time<i2c_finish_cmds>(sec1 | (sec2 << 4) | (min1 << 8) | (min2 << 12), force, i2c_start_cmds);
+    Display::d.time<i2c_finish_cmds>(eta.count(), force, i2c_start_cmds);
   }
 
   static void update(auto const &now, auto &&)

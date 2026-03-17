@@ -156,12 +156,18 @@ public:
 
     static uint8_t get_idx()
     {
-      if (state.pos < 2)
-        return (state.ctim >> (12 - (state.pos * 4))) & 0x0f;
-      else if (state.pos == 2)
-        return 10;
-      else
-        return (state.ctim >> (12 - ((state.pos - 1) * 4))) & 0x0f;
+      int di, xi;
+      switch (state.pos)
+        {
+        case 0: di = 600; xi = 10; break;
+        case 1: di = 60;  xi = 10; break;
+        case 2: return 10; // ':'
+        case 3: di = 10;  xi = 6;  break;
+        case 4: di = 1;   xi = 10; break;
+        default: di = 1;  xi = 10; break;
+        }
+
+      return (state.ctim / di) % xi;
     }
 
     static void set_viewport(uint8_t, auto)
