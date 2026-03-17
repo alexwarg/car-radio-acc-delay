@@ -42,7 +42,7 @@ private:
       {
       case 1:
 #if 1 && defined(__AVR_HAVE_LPMX__)
-        asm ("lpm %0, Z" : "=r"(r.t) : "z"(addr));
+        asm ("lpm %0, %a1" : "=r"(r.t) : "z"(addr));
 #else
         r.a[0] = pgm_read_byte(addr);
 #endif
@@ -51,14 +51,14 @@ private:
 #if 1 && defined(__AVR_HAVE_LPMX__)
 #if 0
         asm (
-          "lpm %0, Z+\n\t"
-          "lpm %1, Z"
-          : "=&r"(byte(t, 0)), "=r"(byte(t, 1)), "=z"(addr) : "2"(addr));
+          "lpm %1, %a2+\n\t"
+          "lpm %0, %a2"
+          : "=r"(r.a[1]), "=&r"(r.a[0]), "+z"(addr));
 #else
         asm (
-          "lpm %A0, Z+\n\t"
-          "lpm %B0, Z"
-          : "=&r"(r.t), "=z"(addr) : "1"(addr));
+          "lpm %A0, %a1+\n\t"
+          "lpm %B0, %a1"
+          : "=&r"(r.t), "+>z"(addr));
 #endif
 #else
         r.b[0] = pgm_read_word(addr);
@@ -67,10 +67,10 @@ private:
       case 3:
 #if 1 && defined(__AVR_HAVE_LPMX__)
         asm (
-            "lpm %0, Z+\n\t"
-            "lpm %1, Z+\n\t"
-            "lpm %2, Z"
-            : "=&r"(r.a[0]), "=&r"(r.a[1]), "=r"(r.a[2]), "=z"(addr) : "3"(addr));
+            "lpm %0, %a3+\n\t"
+            "lpm %1, %a3+\n\t"
+            "lpm %2, %a3"
+            : "=&r"(r.a[0]), "=&r"(r.a[1]), "=r"(r.a[2]), "+z"(addr));
 #else
         r.b[0] = pgm_read_word(addr);
         r.a[2] = pgm_read_byte(addr + 2);
@@ -124,51 +124,51 @@ public:
   constexpr T operator [] (IDX index) const noexcept { return _get(index); }
 
 
-  constexpr Pgm_ptr &operator ++ () noexcept [[always_inline]]
+  [[gnu::always_inline]] constexpr Pgm_ptr &operator ++ () noexcept
   {
     ++_ptr;
     return *this;
   }
 
-  constexpr Pgm_ptr operator ++ (int) noexcept [[always_inline]]
+  [[gnu::always_inline]] constexpr Pgm_ptr operator ++ (int) noexcept
   {
     Pgm_ptr tmp = *this;
     ++_ptr;
     return tmp;
   }
 
-  constexpr Pgm_ptr &operator += (int offs) noexcept [[always_inline]]
+  [[gnu::always_inline]] constexpr Pgm_ptr &operator += (int offs) noexcept
   {
     _ptr += offs;
     return *this;
   }
 
 
-  constexpr Pgm_ptr &operator -- () noexcept [[always_inline]]
+  [[gnu::always_inline]] constexpr Pgm_ptr &operator -- () noexcept
   {
     --_ptr;
     return *this;
   }
 
-  constexpr Pgm_ptr operator -- (int) noexcept [[always_inline]]
+  [[gnu::always_inline]] constexpr Pgm_ptr operator -- (int) noexcept
   {
     Pgm_ptr tmp = *this;
     --_ptr;
     return tmp;
   }
 
-  constexpr Pgm_ptr &operator -= (int offs) noexcept [[always_inline]]
+  [[gnu::always_inline]] constexpr Pgm_ptr &operator -= (int offs) noexcept
   {
     _ptr -= offs;
     return *this;
   }
 
-  constexpr Pgm_ptr operator - (int offs) const noexcept [[always_inline]]
+  [[gnu::always_inline]] constexpr Pgm_ptr operator - (int offs) const noexcept
   {
     return Pgm_ptr(_ptr - offs);
   }
 
-  constexpr Pgm_ptr operator + (int offs) const noexcept [[always_inline]]
+  [[gnu::always_inline]] constexpr Pgm_ptr operator + (int offs) const noexcept
   {
     return Pgm_ptr(_ptr + offs);
   }
@@ -296,51 +296,51 @@ public:
   template<typename IDX>
   constexpr std::remove_extent_t<T> operator [] (IDX index) const noexcept { return _get(index); }
 
-  constexpr Gen_ptr &operator ++ () noexcept [[always_inline]]
+  [[gnu::always_inline]] constexpr Gen_ptr &operator ++ () noexcept
   {
     _ptr += sizeof(T);
     return *this;
   }
 
-  constexpr Gen_ptr operator ++ (int) noexcept [[always_inline]]
+  [[gnu::always_inline]] constexpr Gen_ptr operator ++ (int) noexcept
   {
     Gen_ptr tmp = *this;
     _ptr += sizeof(T);
     return tmp;
   }
 
-  constexpr Gen_ptr &operator += (int offs) noexcept [[always_inline]]
+  [[gnu::always_inline]] constexpr Gen_ptr &operator += (int offs) noexcept
   {
     _ptr += (sizeof(T) * offs);
     return *this;
   }
 
 
-  constexpr Gen_ptr &operator -- () noexcept [[always_inline]]
+  [[gnu::always_inline]] constexpr Gen_ptr &operator -- () noexcept
   {
     _ptr -= sizeof(T);
     return *this;
   }
 
-  constexpr Gen_ptr operator -- (int) noexcept [[always_inline]]
+  [[gnu::always_inline]] constexpr Gen_ptr operator -- (int) noexcept
   {
     Gen_ptr tmp = *this;
     _ptr -= sizeof(T);
     return tmp;
   }
 
-  constexpr Gen_ptr &operator -= (int offs) noexcept [[always_inline]]
+  [[gnu::always_inline]] constexpr Gen_ptr &operator -= (int offs) noexcept
   {
     _ptr -= (sizeof(T) * offs);
     return *this;
   }
 
-  constexpr Gen_ptr operator - (int offs) const noexcept [[always_inline]]
+  [[gnu::always_inline]] constexpr Gen_ptr operator - (int offs) const noexcept
   {
     return Gen_ptr(_ptr - (sizeof(T) * offs));
   }
 
-  constexpr Gen_ptr operator + (int offs) const noexcept [[always_inline]]
+  [[gnu::always_inline]] constexpr Gen_ptr operator + (int offs) const noexcept
   {
     return Gen_ptr(_ptr + (sizeof(T) * offs));
   }
