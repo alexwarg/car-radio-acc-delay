@@ -1,10 +1,10 @@
 MKDIR := mkdir -p
 
-BUILD ?= $(SRCROOT)/.build
 
 SUBDIRS := src
 
 export SRCROOT = $(PWD)
+BUILD ?= $(SRCROOT)/.build
 
 .PHONY: all clean $(SUBDIRS)
 
