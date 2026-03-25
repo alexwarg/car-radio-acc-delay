@@ -62,6 +62,12 @@ def main():
     parser.add_argument('-p','--print_ascii',dest='print_ascii', default=False, action='store_true',help='Print each character as ASCII Art on commandline, for debugging')
     parser.add_argument('--square', default=False, action='store_true',help='Make the font square instead of height by (height * 0.75)')
     parser.add_argument('--vertical', default=False, action='store_true',help='Create vertical bitmaps')
+    parser.add_argument('--nosubdirs', default=False, action='store_true', help='Put all generated files into output directory. Do not create subfilders.')
+    parser.add_argument('--nospaces', default=False, action='store_true', help='Replace spaces with underscores in file names.')
+    parser.add_argument('--usebbox', default=False, action='store_true', help='Use bounding-box for glyph sizes.')
+    parser.add_argument('--cpp', default=False, action='store_true', help='Genertae C++ header.')
+    parser.add_argument('--hex', default=False, action='store_true', help='Genertae hexadecimal byte notation.')
+    parser.add_argument('--autosize', type=int, help='Autosize the font to fit the target size.')
     global args;
     args = parser.parse_args()
 
@@ -75,7 +81,6 @@ def main():
         print_license()
         return(0)
     else :
-        vertical = args.vertical
         progmem = args.progmem
         print_ascii = args.print_ascii
         # Folder to iterate on
@@ -149,12 +154,19 @@ def main():
             Font = re.sub('\x00','',Font)
 
             output_bmh_folder = os.path.join(output_folder, Font)
+            if args.nosubdirs:
+                output_bmh_folder = output_folder
+
             if not (os.path.exists(output_bmh_folder)):
                 os.mkdir(output_bmh_folder)
 
+            font_filename_prefix = re.sub('\\s+', '_', Font);
+            font_typename_prefix = 'Fnt_' + re.sub('-', '_', font_filename_prefix).lower();
+
             for height_idx in height_indices:
-                width_array = []
-                xoff_array = []
+                width_array = []      # full widths of glyphs, might be bigger than the variable widths of the glyphs
+                xoffset_array = []    # xoffsets for variable width bitmap
+                char_width_array = [] # widths of the bitmap for the glyph
 
                 # initialize PIL Image
                 height = font_heights[height_idx]
@@ -168,34 +180,53 @@ def main():
                     yoffset = font_yoffsets[height_idx]
 
                 # Filename Definitions
-                filename = Font + '_' + str(height) # General Filename
+                filename = (font_filename_prefix if args.nospaces else Font) + '_' + str(height) # General Filename
+
+                # type anme if used
+                type_name = font_typename_prefix + '_' + str(height)
+
                 h_filename = os.path.join(output_bmh_folder, filename + '.h') # Outputfile for font
                 png_filename = os.path.join(output_bmh_folder, filename + '.png') # Outputfile for font
 
                 # define PILfont
-                size = [width, height]
-
                 if (args.font_height is None):
                     font_height = int(font_heights[height_idx]*1.1)
                 else:
                     font_height = int(args.font_height)
 
+                if args.autosize != None:
+                    font_height = autosize_font(ttf_absolute_filename, font_height, height - args.autosize, character_line)
+
                 #font_height = int(height*1.1)
                 PILfont = ImageFont.truetype(ttf_absolute_filename, font_height)
 
+                # automatically calculate the yoffset from the bbox if not set manually
+                if args.offset == None and args.usebbox:
+                    [l, t, r, b] = PILfont.getbbox(character_line);
+                    yoffset = t - (height - (b - t)) / 2
+
+                font_infos = dict(name=Font, height=height, yoffset=yoffset, character_line=character_line, tname=type_name, fontsize=font_height, name_prefix=font_typename_prefix)
+
+
+
+
                 # Open BMH file and start writing
-                outfile = write_bmh_head(h_filename, Font, height)
+                outfile = write_bmh_head(h_filename, Font, height, infos=font_infos)
 
                 for char in chars:
                     # Create pixel image with PIL
-                    [l, t, r, b] = PILfont.getbbox(char);
-                    width = r - l
-                    print (f"BBOX: {char} {l}, {width}, {t}, {b}");
-                    #image =  Image.new('1', size, color=255)
+                    l = 0;
+                    if args.usebbox:
+                        [l, t, r, b] = PILfont.getbbox(char);
+                        width = r - l
+                        if height < (b - yoffset):
+                            print (f"height of '{char}' is out of bounds (max={height} < {b-yoffset})!");
+
+                        #print (f"BBOX: {char} {l}, {t}, {r}, {b} W={r-l} H={b-t}");
+
                     image =  Image.new('1', [width, height], color=255)
                     draw = ImageDraw.Draw(image)
-                    draw.text((0, -yoffset), char, font=PILfont)
-                    #draw.text((0, -yoffset), char, font=PILfont)
+                    draw.text((-l, -yoffset), char, font=PILfont)
 
                     # Calculate byte arrays and write to file
 
@@ -208,16 +239,18 @@ def main():
                         x_offset = 0
 
                     width_array.append(width)
-                    xoff_array.append(x_offset)
+                    xoffset_array.append(x_offset)
+                    char_width_array.append(char_width)
+
                     dot_array = get_pixel_byte(image, height, char_width, x_offset)
 
                     write_bmh_char(outfile, char, dot_array, progmem)
                     if(print_ascii):
-                        print(char + f": (w={char_width})")
+                        print(char + ":")
                         print_char(image, height, char_width, x_offset)
 
                 # write tail and close bmh file
-                write_bmh_tail(outfile, width_array, character_line, xoff_array)
+                write_bmh_tail(outfile, width_array, character_line, xoffset_array, char_width_array)
                 # write Image picture with all characters
                 write_pic_file(character_line, PILfont, width, height, png_filename)
                 if(len(TTF_FILES)<20):
@@ -268,7 +301,7 @@ def get_ttf_filename (Target_Font, ttf_searchfolder):
     target_ttf_file = -1
     target_ttf_dir = -1
     for dirpath, dirnames, filenames in os.walk(ttf_searchfolder):
-        for filename in [f for f in filenames if f.endswith(".ttf")]:
+        for filename in [f for f in filenames if f.endswith(".ttf") or f.endswith(".TTF")]:
             ttf_file = {'dir': dirpath, 'filename': filename}
             TTF_FILES.append(ttf_file)
 
@@ -290,7 +323,11 @@ def get_ttf_filename (Target_Font, ttf_searchfolder):
 def write_pic_file(character_line, PILfont, width, height, png_filename):
 
     mode = '1'
-    pic_size = (len(character_line) * width, height+10)
+    if args.usebbox:
+        [l, t, r, b] = PILfont.getbbox(character_line)
+        pic_size = [r-l + 1, b + 3]
+    else:
+        pic_size = (len(character_line) * width, height+10)
     image_pic =  Image.new(mode, pic_size, color=255)
     draw_pic = ImageDraw.Draw(image_pic)
     draw_pic.text((0, 0), character_line, font=PILfont)
@@ -298,7 +335,41 @@ def write_pic_file(character_line, PILfont, width, height, png_filename):
 
     return 0
 
+#--------------------------------------------------------------------------------------
+# automatically approximate font size settings to get the defined target height
+# in pixels for the given character_line
+#
+def autosize_font(fontfile, font_height, target_height, character_line):
+    if target_height < 1:
+        exit
 
+    factor = 0.9999999
+    last_diff = None
+    while True:
+        f = ImageFont.truetype(fontfile, font_height)
+        [l, t, r, b] = f.getbbox(character_line);
+        h = b - t
+        diff = target_height - h
+        #print (f"BBOX(s={try_height} -> diff={diff}): '{character_line}' -> {l}, {t}, {r}, {b}");
+        if diff == 0:
+            break;
+
+        ratio = target_height / h
+        ratio = ((ratio - 1) * factor) +1
+        if (last_diff != None and (diff * last_diff) < 0):
+            factor = factor * factor
+
+        last_diff = diff
+        if ratio == 1 or (factor < 0.5 and diff > 0):
+            break
+
+        font_height = font_height * ratio
+
+    print (f"autosize fontsize for {target_height}pixels is {font_height:.2f}")
+    return font_height
+
+#---------------------------------------------------------------------------------------
+# Calculate one byte for eight pixels
 def get_pix_byte(image, x_s, y_s, x_offset, dot_threshold):
     dot_byte = 0
     for k in range(8):
@@ -321,7 +392,6 @@ def get_pixel_byte(image, height, char_width, x_offset):
         for y_s in range(int(height/8)):
             for x_s in range(char_width):
                 dot_array.append(get_pix_byte(image, x_s, y_s, x_offset, dot_threshold))
-
     return dot_array
 
 #---------------------------------------------------------------------------------------
@@ -342,6 +412,8 @@ def calculate_char_width(image, width, height):
             zero_col_cnt_left += 1
         else:
             break
+    if zero_col_cnt_left == width:
+        return [zero_col_cnt_left, 0];
 # Count empty columns from left
     zero_col_cnt_right = 0
     for x_c in range(width):
@@ -375,70 +447,136 @@ def read_character_file(char_filename):
 def search_ttf_folder(ttf_searchfolder):
     TTF_FILES = []
     for dirpath, dirnames, filenames in os.walk(ttf_searchfolder):
-        for filename in [f for f in filenames if f.endswith(".ttf")]:
+        for filename in [f for f in filenames if f.endswith(".ttf") or f.endswith(".TTF")]:
             ttf_file = {'dir': dirpath, 'filename': filename}
             TTF_FILES.append(ttf_file)
     return TTF_FILES
 
 #---------------------------------------------------------------------------------------
-def write_bmh_head(h_filename, Font, height):
+def ptr_type(typ='unsigned char'):
+    return f"Pgm_ptr<{typ}>" if args.progmem else f"{typ} const *"
+
+#---------------------------------------------------------------------------------------
+def val(val, ptr=False, typ='unsigned char'):
+    ptyp = ptr_type(typ) if ptr else typ;
+    return f"to_pgm_array<{ptyp}>({{{val}}})" if args.progmem else f"{{{val}}}"
+
+def type_def(name, ptr=False, typ='unsigned char'):
+    ptyp = ptr_type(typ) if ptr else typ;
+    return f"static constexpr auto const {name}" if args.progmem else f"static constexpr {ptyp} const {name}[]"
+
+#---------------------------------------------------------------------------------------
+def write_bmh_cpp_head(outfile, Font, height, infos):
+    def c_bool(v):
+        return "true" if v else "false"
+
+    C = f'''
+#pragma once
+
+{'#include <cxx_pgm.h>' if args.progmem else ''}
+
+struct {infos['tname']}
+{{
+    static constexpr char const *name = "{infos['name']}";
+    static constexpr unsigned height = {infos['height']};
+    static constexpr bool vertical = {c_bool(args.vertical)};
+    static constexpr bool width_compressed = {c_bool(args.variable_width)};
+
+    static constexpr unsigned bytes_per_row = {infos['height']} / 8;
+''';
+
+    outfile.write(C);
+
+
+#---------------------------------------------------------------------------------------
+def write_bmh_head(h_filename, Font, height, infos):
 # Process BMF array and create header file to be used with any C compiler
     outfile = open(h_filename,"w+")
 
-    outfile.write("// Header File for SSD1306 characters\n")
+    outfile.write(f"// Header File for SSD1306 characters vertical={args.vertical}\n")
     outfile.write("// Generated with TTF2BMH\n")
-    outfile.write("// Font " +  Font + "\n")
+    outfile.write("// Font " +  infos['name'] + "\n")
 
     #print('Font: ' + Font + ', Size:' + str(height))
-    outfile.write("// Font Size: " + str(height) + "\n")
+    outfile.write("// Font Size: " + str(infos['height']) + "\n")
+
+    if args.cpp:
+        write_bmh_cpp_head(outfile, Font, height, infos=infos)
     return outfile
+
+#---------------------------------------------------------------------------------------
+#
+def convert_bytes_to_str(dot_array):
+    if args.hex:
+        a = []
+        comma = ""
+        for i, byte in enumerate(dot_array):
+            if i % 16 == 0:
+                a.append(f"{comma}\n        ")
+                comma = ""
+            a.append(f"{comma}0x{byte:02X}")
+            comma = ", "
+        return (''.join(a))
+    else:
+        return (','.join(map(str, dot_array)))
 
 #---------------------------------------------------------------------------------------
 #
 def write_bmh_char(outfile, char, dot_array, progmem):
     # C Type declaration strings
     # Adjust for different MCU/compilers
-    C_declaration_0 = 'const uint8_t bitmap_'
-    if(progmem):
-        C_declaration_1 = '[] PROGMEM = {'
-    else:
-        C_declaration_1 = '[] = {'
 
-    C_mem_array = (','.join(map(lambda a: f"0x{a:02x}", dot_array)))
-    C_printline = C_declaration_0 + str(ord(char)) + C_declaration_1 + C_mem_array +'};\n'
+    pm = 'PROGMEM ' if progmem else '';
+    C_mem_array = convert_bytes_to_str(dot_array);
+    if args.cpp:
+        C_printline = f"    {type_def('bitmap_' + str(ord(char)))} = {val(C_mem_array)};\n"
+    else:
+        C_printline = f"const char bitmap_{ord(char)}[] {pm}= {{{C_mem_array}}};\n"
 
     #print(C_printline)
     outfile.write(C_printline)
 
 #---------------------------------------------------------------------------------------
 # Write BMH Tail and close file
-def write_bmh_tail(outfile, width_array, character_line, xoff_array):
+def write_bmh_cpp_tail(outfile, width_array, character_line, xoff_array, cwa):
+    char_wa = []
+    cnames = []
+
+
+    for idx in range(len(character_line)):
+        cname = f" bitmap_{ord(character_line[idx])}"
+        cnames.append(cname);
+        char_wa.append(cwa[idx])
+
+    C = f'''
+    {type_def('width')} = {val(','.join(map(str, width_array)))};
+    {type_def('cwidth')} = {val(','.join(map(str, char_wa)))};
+    {type_def('xoff')} = {val(','.join(map(str, xoff_array)))};
+    {type_def('charsx', ptr=True)} = {val(','.join(cnames), ptr=True)};
+}};
+'''
+    outfile.write(C);
+
+#---------------------------------------------------------------------------------------
+# Write BMH Tail and close file
+def write_bmh_tail(outfile, width_array, character_line, xoff_array, cwa):
+    if args.cpp:
+        write_bmh_cpp_tail(outfile, width_array, character_line, xoff_array, cwa)
+        outfile.close()
+        return
+
     C_addr_array = []
-    C_char_width_0 = 'const uint8_t char_width[] PROGMEM = {'
+    C_char_width_0 = 'const char char_width[] = {'
     C_char_width_1 = (','.join(map(str, width_array)))
     C_char_width_2 = '};\n'
 
     outfile.write(C_char_width_0 + C_char_width_1 + C_char_width_2)
 
-    outfile.write('const uint8_t char_xoff[] PROGMEM = {' + (','.join(map(str, xoff_array))) + '};\n');
-
-    outfile.write('struct RB_char_desc { uint8_t const *addr; uint8_t width; };\n')
-    outfile.write('template<unsigned N> constexpr RB_char_desc mk_char_desc(uint8_t const (&b)[N]) noexcept { return { b, N / 3 }; }\n')
-
-    #for char in character_line:
-    #    C_addr_array.append('&bitmap_' + str(ord(char)))
-
-    #C_addr  = (','.join(C_addr_array))
-    #C_address_declaration_1 = "const char* char_addr[] = {"
-    #C_address_declaration_2 = "};\n"
-
     for char in character_line:
-        C_addr_array.append('mk_char_desc(bitmap_' + str(ord(char)) + ')')
+        C_addr_array.append('&bitmap_' + str(ord(char)))
 
     C_addr  = (','.join(C_addr_array))
-    C_address_declaration_1 = "RB_char_desc const char_desc[] = {"
-    C_address_declaration_1 = "RB_char_desc const char_desc[] PROGMEM = {"
-
+    C_address_declaration_1 = "const char* char_addr[] = {"
     C_address_declaration_2 = "};\n"
 
     outfile.write(C_address_declaration_1 + C_addr + C_address_declaration_2)
