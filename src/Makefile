@@ -63,15 +63,17 @@ endif
 $(OLED_HEADERS): img_%.h: $(subst _,-,%).tiff
 	$(GEN_IMG) $< $@ img_$(*F)
 
+TTF2BMH_OPTS := --vertical --variable_width --nosubdirs --nospaces -o $(SRCROOT)/src/fonts/ --usebbox --cpp --hex \
+		--progmem #--autosize=0
 fonts:
-	$(TOOLDIR)/ttf2bmh.py -s 24 -fh 24 -f $(SRCROOT)/assets/fonts -o $(SRCROOT)/src/fonts/ --progmem -O 0 --vertical --variable_width
+	$(TOOLDIR)/ttf2bmh.py -s 24 -fh 24 -f $(SRCROOT)/assets/fonts $(TTF2BMH_OPTS)
 
 fonts/%.h: FNT_F=$(subst _, ,$(*F))
 fonts/%.h: SZ=$(lastword $(FNT_F))
 fonts/%.h: FNT=$(wordlist 2,$(words $(FNT_F)),1st $(FNT_F))
 
 fonts/%.h:
-	$(TOOLDIR)/ttf2bmh.py $(addprefix -f ,$(FONTDIR)) -s $(SZ) -fh $(SZ) -o $(SRCROOT)/src/fonts/ --progmem -O 0 --vertical --variable_width --font "$(FNT)"
+	$(TOOLDIR)/ttf2bmh.py $(addprefix -f ,$(FONTDIR)) -s $(SZ) -fh $(SZ)  $(TTF2BMH_OPTS) --font "$(FNT)"
 
 
 $(TARGET:.hex=.elf): $(OBJECTS)
